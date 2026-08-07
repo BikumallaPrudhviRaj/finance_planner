@@ -1,0 +1,6 @@
+server/node_modules
+.bob
+*.xlsx
+.git
+.gitignore
+.DS_Store

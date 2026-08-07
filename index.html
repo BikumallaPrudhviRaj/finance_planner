@@ -1,0 +1,1901 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Financial Goals Planner</title>
+<!-- Google Identity Services (Sign-In) -->
+<script src="https://accounts.google.com/gsi/client" async defer onload="window.gsiLoaded && window.gsiLoaded()"></script>
+<!-- Google API client (Sheets) -->
+<script src="https://apis.google.com/js/api.js" async defer onload="window.gapiLoaded && window.gapiLoaded()"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #f0f2f5; --surface: #ffffff; --border: #e2e8f0; --text: #1a202c; --muted: #718096;
+    --accent: #3b82f6; --accent-dark: #2563eb; --green: #16a34a; --amber: #d97706;
+    --red: #dc2626; --purple: #7c3aed; --teal: #0891b2;
+    --imm: #fee2e2; --imm-text: #991b1b; --sht: #dcfce7; --sht-text: #166534;
+    --med: #fef9c3; --med-text: #854d0e; --lng: #ede9fe; --lng-text: #5b21b6;
+    --need-bg: #dbeafe; --need-text: #1e40af; --desire-bg: #fef3c7; --desire-text: #92400e;
+    --radius: 10px;
+    --shadow: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.04);
+    --shadow-md: 0 4px 6px -1px rgba(0,0,0,.08), 0 2px 4px -2px rgba(0,0,0,.04);
+  }
+  body { font-family: -apple-system,"Segoe UI",system-ui,sans-serif; font-size: 14px; line-height: 1.6; background: var(--bg); color: var(--text); }
+  .app { display: grid; grid-template-columns: 248px 1fr; min-height: 100vh; }
+  .sidebar { background: #1e293b; color: #e2e8f0; position: sticky; top: 0; height: 100vh; overflow-y: auto; display: flex; flex-direction: column; }
+  .sidebar-logo { padding: 20px 20px 14px; border-bottom: 1px solid #334155; }
+  .sidebar-logo h1 { font-size: 15px; font-weight: 700; color: #fff; line-height: 1.3; }
+  .sidebar-logo p { font-size: 11px; color: #94a3b8; margin-top: 2px; }
+  .sidebar-nav { flex: 1; padding: 12px 0; }
+  .nav-section { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: #64748b; padding: 10px 20px 4px; }
+  .nav-item { display: flex; align-items: center; gap: 10px; padding: 9px 20px; font-size: 13px; color: #cbd5e1; cursor: pointer; transition: all .15s; border-left: 3px solid transparent; }
+  .nav-item:hover { background: #334155; color: #fff; }
+  .nav-item.active { background: #1d4ed8; color: #fff; border-left-color: #60a5fa; }
+  .nav-item .icon { font-size: 15px; width: 18px; text-align: center; }
+  .sidebar-footer { padding: 14px 20px; border-top: 1px solid #334155; font-size: 11px; color: #64748b; }
+  .main { padding: 28px; overflow-x: hidden; }
+  .page { display: none; }
+  .page.active { display: block; }
+  .page-header { margin-bottom: 24px; }
+  .page-header h2 { font-size: 22px; font-weight: 700; }
+  .page-header p { color: var(--muted); font-size: 13px; margin-top: 3px; }
+
+  /* KPI grid */
+  .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
+  .kpi-grid-5 { display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; margin-bottom: 24px; }
+  .kpi-card { background: var(--surface); border-radius: var(--radius); padding: 18px 20px; box-shadow: var(--shadow); border: 1px solid var(--border); }
+  .kpi-card.wide { grid-column: span 2; }
+  .kpi-label { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; margin-bottom: 6px; }
+  .kpi-value { font-size: 22px; font-weight: 700; color: var(--text); line-height: 1.1; }
+  .kpi-sub { font-size: 11px; color: var(--muted); margin-top: 4px; }
+  .kpi-card.accent .kpi-value { color: var(--accent); }
+  .kpi-card.green .kpi-value  { color: var(--green); }
+  .kpi-card.amber .kpi-value  { color: var(--amber); }
+  .kpi-card.purple .kpi-value { color: var(--purple); }
+  .kpi-card.red .kpi-value    { color: var(--red); }
+  .kpi-card.teal .kpi-value   { color: var(--teal); }
+
+  /* Charts */
+  .charts-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+  .charts-row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+  .chart-card { background: var(--surface); border-radius: var(--radius); padding: 20px; box-shadow: var(--shadow); border: 1px solid var(--border); }
+  .chart-card h3 { font-size: 13px; font-weight: 600; margin-bottom: 16px; color: var(--text); }
+  .chart-wrap { position: relative; height: 220px; }
+
+  /* Cards / tables */
+  .card { background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); border: 1px solid var(--border); overflow: hidden; margin-bottom: 20px; }
+  .card-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--border); }
+  .card-header h3 { font-size: 14px; font-weight: 600; }
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  thead th { background: #f8fafc; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 600; padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  tbody td { padding: 9px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:hover td { background: #f8fafc; }
+  tbody tr.dropped { opacity: .4; }
+  td input[type="text"], td input[type="number"] { background: transparent; border: none; font-size: 13px; font-family: inherit; color: var(--text); width: 100%; padding: 0; outline: none; }
+  td input[type="text"]:focus, td input[type="number"]:focus { background: #eff6ff; border-radius: 4px; padding: 2px 6px; }
+  td input[type="number"] { -moz-appearance: textfield; }
+  td select { background: transparent; border: none; font-size: 13px; font-family: inherit; color: var(--text); outline: none; cursor: pointer; width: 100%; }
+  td select:focus { background: #eff6ff; border-radius: 4px; }
+
+  .badge { display: inline-block; padding: 2px 9px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+  .badge-need    { background: var(--need-bg);   color: var(--need-text); }
+  .badge-desire  { background: var(--desire-bg); color: var(--desire-text); }
+  .badge-imm     { background: var(--imm);  color: var(--imm-text); }
+  .badge-short   { background: var(--sht);  color: var(--sht-text); }
+  .badge-medium  { background: var(--med);  color: var(--med-text); }
+  .badge-long    { background: var(--lng);  color: var(--lng-text); }
+  .badge-keep    { background: #dcfce7; color: #166534; }
+  .badge-revise  { background: #fef9c3; color: #854d0e; }
+  .badge-drop    { background: #fee2e2; color: #991b1b; }
+  .priority-num  { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 11px; font-weight: 700; }
+
+  .btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 6px; font-size: 13px; font-weight: 500; border: 1px solid transparent; cursor: pointer; transition: all .15s; }
+  .btn-primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .btn-primary:hover { background: var(--accent-dark); }
+  .btn-ghost { background: transparent; color: var(--muted); border-color: var(--border); }
+  .btn-ghost:hover { background: #f1f5f9; color: var(--text); }
+  .btn-sm { padding: 4px 10px; font-size: 12px; }
+  .btn-icon { padding: 5px; border-radius: 6px; background: transparent; border: 1px solid var(--border); cursor: pointer; color: var(--muted); font-size: 14px; }
+  .btn-icon:hover { background: #f1f5f9; color: var(--text); }
+
+  /* Finance input sections */
+  .finance-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; padding: 20px; }
+  .finance-section h4 { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 12px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+  .finance-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .finance-row label { flex: 1; font-size: 13px; color: var(--text); }
+  .finance-row .fin-input { width: 160px; border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; font-size: 13px; font-family: inherit; text-align: right; outline: none; }
+  .finance-row .fin-input:focus { border-color: var(--accent); }
+  .finance-row .fin-tag { font-size: 11px; color: var(--muted); width: 32px; text-align: left; }
+  /* Asset tracker table */
+  .asset-tbl td { padding: 8px 10px; }
+  .asset-tbl td input[type="number"] { width: 110px; border: 1px solid var(--border); border-radius: 5px; padding: 5px 8px; font-size: 13px; font-family: inherit; text-align: right; outline: none; background: #fff; }
+  .asset-tbl td input[type="number"]:focus { border-color: var(--accent); background: #eff6ff; }
+  .asset-tbl td select { width: 90px; border: 1px solid var(--border); border-radius: 5px; padding: 5px 8px; font-size: 12px; font-family: inherit; background: #fff; outline: none; }
+  .asset-tbl td select:focus { border-color: var(--accent); }
+  .asset-tbl .proj-val { font-weight: 700; color: var(--green); font-family: "Menlo","Consolas",monospace; font-size: 12px; }
+  .asset-tbl .rate-badge { display: inline-block; background: #f1f5f9; border-radius: 4px; padding: 2px 6px; font-size: 11px; color: var(--muted); }
+  /* Monthly tracker */
+  .tracker-month-label { font-size: 11px; font-weight: 700; color: var(--muted); }
+  .tracker-up   { color: var(--green); font-weight: 600; }
+  .tracker-down { color: var(--red);   font-weight: 600; }
+  .tracker-bank { background: #eff6ff; }
+
+  /* Assumptions */
+  .assumptions-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; padding: 20px; }
+  .assumption-item label { display: block; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 8px; }
+  .slider-wrap { display: flex; align-items: center; gap: 10px; }
+  .slider-wrap input[type="range"] { flex: 1; accent-color: var(--accent); }
+  .slider-val { font-size: 14px; font-weight: 700; color: var(--accent); min-width: 52px; text-align: right; }
+
+  /* Calc table */
+  .calc-amount { font-weight: 600; font-family: "Menlo","Consolas",monospace; }
+  .calc-sip { color: var(--green); font-weight: 700; }
+  .calc-offset { color: var(--teal); font-weight: 600; }
+  .calc-net { color: var(--accent); font-weight: 700; }
+  .totals-row td { background: #1e293b; color: #fff; font-weight: 700; }
+  .totals-row .calc-sip { color: #86efac; }
+  .totals-row .calc-net { color: #93c5fd; }
+
+  /* Add goal form */
+  .add-form { display: flex; gap: 10px; flex-wrap: wrap; padding: 16px 20px; background: #f8fafc; border-top: 1px solid var(--border); align-items: flex-end; }
+  .add-form .field { display: flex; flex-direction: column; gap: 4px; }
+  .add-form label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+  .add-form input, .add-form select { border: 1px solid var(--border); border-radius: 6px; padding: 7px 10px; font-size: 13px; font-family: inherit; background: #fff; color: var(--text); outline: none; }
+  .add-form input:focus, .add-form select:focus { border-color: var(--accent); }
+  .field-goal { flex: 2; min-width: 160px; }
+  .field-sm { min-width: 110px; }
+  .field-xs { min-width: 80px; }
+
+  /* Net worth bar */
+  .nw-bar-wrap { background: var(--border); border-radius: 6px; height: 12px; overflow: hidden; margin: 10px 0 4px; display: flex; }
+  .nw-bar-asset { height: 100%; background: var(--green); transition: width .4s; }
+  .nw-bar-liab  { height: 100%; background: var(--red); transition: width .4s; }
+  .nw-bar-legend { display: flex; gap: 16px; font-size: 11px; color: var(--muted); }
+  .nw-bar-legend span::before { content: "●"; margin-right: 4px; }
+  .nw-bar-legend .l-asset::before { color: var(--green); }
+  .nw-bar-legend .l-liab::before  { color: var(--red); }
+
+  /* Cashflow row */
+  .cf-row { display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
+  .cf-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 18px; flex: 1; min-width: 140px; box-shadow: var(--shadow); }
+  .cf-card-link { cursor: pointer; transition: border-color .15s, box-shadow .15s; }
+  .cf-card-link:hover { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(59,130,246,.15); }
+  .cf-label { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 600; }
+  .cf-value { font-size: 18px; font-weight: 700; margin-top: 2px; }
+  .cf-arrow { font-size: 22px; display: flex; align-items: center; color: var(--muted); padding-top: 14px; }
+
+  /* Toast */
+  .toast { position: fixed; bottom: 24px; right: 24px; background: #1e293b; color: #e2e8f0; padding: 12px 20px; border-radius: 8px; font-size: 13px; box-shadow: var(--shadow-md); opacity: 0; transform: translateY(10px); transition: all .25s; z-index: 999; pointer-events: none; }
+  .toast.show { opacity: 1; transform: translateY(0); }
+
+  /* Change log */
+  .log-list { list-style: none; padding: 0; }
+  .log-item { display: flex; align-items: flex-start; gap: 12px; padding: 12px 20px; border-bottom: 1px solid var(--border); font-size: 12px; }
+  .log-item:last-child { border-bottom: none; }
+  .log-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); flex-shrink: 0; margin-top: 4px; }
+  .log-dot.add { background: var(--green); }
+  .log-dot.del { background: var(--red); }
+  .log-dot.edit { background: var(--amber); }
+  .log-time { color: var(--muted); white-space: nowrap; font-size: 11px; }
+  .log-text { flex: 1; }
+
+  .info-banner { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 12px 16px; font-size: 12px; color: #1e40af; margin-bottom: 20px; line-height: 1.7; }
+  .info-banner strong { color: #1e3a8a; }
+
+  @media (max-width: 1000px) {
+    .app { grid-template-columns: 1fr; }
+    .sidebar { position: relative; height: auto; }
+    .kpi-grid, .kpi-grid-5 { grid-template-columns: 1fr 1fr; }
+    .charts-row, .charts-row-3 { grid-template-columns: 1fr; }
+    .finance-grid { grid-template-columns: 1fr; }
+    .assumptions-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<!-- ══ AUTH MODAL ══ -->
+<div id="auth-overlay" style="position:fixed;inset:0;background:rgba(15,23,42,.7);z-index:9999;display:flex;align-items:center;justify-content:center;">
+  <div style="background:#fff;border-radius:12px;width:380px;padding:36px 32px;box-shadow:0 20px 40px rgba(0,0,0,.25);text-align:center;">
+    <div style="font-size:36px;margin-bottom:10px;">💰</div>
+    <h2 style="font-size:20px;font-weight:700;margin-bottom:6px;">Financial Goals Planner</h2>
+    <p style="font-size:13px;color:#718096;margin-bottom:28px;">Sign in with Google to save and sync your plan across devices</p>
+    <div id="auth-error" style="display:none;background:#fee2e2;color:#991b1b;border-radius:6px;padding:8px 12px;font-size:12px;margin-bottom:16px;text-align:left;"></div>
+    <!-- Google Sign-In button rendered here by GSI -->
+    <div id="g_id_signin" style="display:flex;justify-content:center;margin-bottom:16px;"></div>
+    <div id="auth-loading" style="display:none;color:#718096;font-size:13px;margin-bottom:16px;">Signing in…</div>
+    <div style="border-top:1px solid #e2e8f0;padding-top:14px;margin-top:4px;">
+      <button onclick="continueOffline()" style="background:none;border:none;color:#718096;font-size:12px;cursor:pointer;text-decoration:underline;">Continue without account (data won't be saved)</button>
+    </div>
+  </div>
+</div>
+
+<div class="app">
+
+<!-- ══ SIDEBAR ══ -->
+<nav class="sidebar">
+  <div class="sidebar-logo">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
+      <div id="avatar" style="width:34px;height:34px;border-radius:50%;background:#3b82f6;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;color:#fff;flex-shrink:0;">?</div>
+      <div>
+        <div id="sidebar-name" style="font-weight:700;font-size:14px;color:#fff;line-height:1.2;">Financial Planner</div>
+        <div id="sidebar-email" style="font-size:10px;color:#94a3b8;margin-top:1px;">Not signed in</div>
+      </div>
+    </div>
+  </div>
+  <div class="sidebar-nav">
+    <div class="nav-section">Overview</div>
+    <div class="nav-item active" data-page="dashboard"><span class="icon">📊</span>Dashboard</div>
+    <div class="nav-section">My Finances</div>
+    <div class="nav-item" data-page="profile"><span class="icon">👤</span>Profile</div>
+    <div class="nav-item" data-page="finances"><span class="icon">🏦</span>Income &amp; Assets</div>
+    <div class="nav-item" data-page="networth"><span class="icon">📋</span>Net Worth</div>
+    <div class="nav-section">Goals</div>
+    <div class="nav-item" data-page="goals"><span class="icon">🎯</span>Goals &amp; Steps 1–7</div>
+    <div class="nav-item" data-page="calc"><span class="icon">🧮</span>Step 8 · Calculations</div>
+    <div class="nav-section">Insights</div>
+    <div class="nav-item" data-page="tracker"><span class="icon">📅</span>Monthly Tracker</div>
+    <div class="nav-item" data-page="charts"><span class="icon">📈</span>Charts &amp; Analytics</div>
+    <div class="nav-item" data-page="log"><span class="icon">🕓</span>Change Log</div>
+  </div>
+  <div class="sidebar-footer" style="display:flex;align-items:center;justify-content:space-between;">
+    <span>Last saved: <span id="lastUpdated">—</span></span>
+    <button id="logout-btn" onclick="logout()" style="display:none;background:none;border:1px solid #334155;border-radius:4px;color:#94a3b8;padding:3px 8px;font-size:11px;cursor:pointer;">Sign out</button>
+    <span id="save-indicator" style="font-size:10px;color:#64748b;"></span>
+  </div>
+</nav>
+
+<!-- ══ MAIN ══ -->
+<main class="main">
+
+<!-- ════ DASHBOARD ════ -->
+<div class="page active" id="page-dashboard">
+  <div class="page-header">
+    <h2>Dashboard</h2>
+    <p>Complete financial picture — goals, assets, income and the net gap you need to fill each month.</p>
+  </div>
+  <div class="kpi-grid-5">
+    <div class="kpi-card teal">
+      <div class="kpi-label">Net Worth</div>
+      <div class="kpi-value" id="kpi-networth">—</div>
+      <div class="kpi-sub">Assets − Liabilities</div>
+    </div>
+    <div class="kpi-card green">
+      <div class="kpi-label">Monthly Surplus</div>
+      <div class="kpi-value" id="kpi-surplus">—</div>
+      <div class="kpi-sub">Income − Expenses</div>
+    </div>
+    <div class="kpi-card accent">
+      <div class="kpi-label">Total Future Cost</div>
+      <div class="kpi-value" id="kpi-future">—</div>
+      <div class="kpi-sub">Inflation-adjusted goals</div>
+    </div>
+    <div class="kpi-card purple">
+      <div class="kpi-label">Corpus from Assets</div>
+      <div class="kpi-value" id="kpi-corpus">—</div>
+      <div class="kpi-sub">Existing assets grown</div>
+    </div>
+    <div class="kpi-card amber">
+      <div class="kpi-label">Net Monthly SIP Gap</div>
+      <div class="kpi-value" id="kpi-gap">—</div>
+      <div class="kpi-sub">Still needed per month</div>
+    </div>
+  </div>
+
+  <!-- Cash flow row — all cards navigate to finances page -->
+  <div class="cf-row">
+    <div class="cf-card cf-card-link" data-nav="finances" title="Click to edit income">
+      <div class="cf-label">Total Income / mo <span style="font-size:10px;color:var(--accent);">✏</span></div>
+      <div class="cf-value" id="cf-income" style="color:var(--green)">—</div>
+    </div>
+    <div class="cf-arrow">−</div>
+    <div class="cf-card cf-card-link" data-nav="finances" title="Click to edit expenses">
+      <div class="cf-label">Monthly Expenses <span style="font-size:10px;color:var(--accent);">✏</span></div>
+      <div class="cf-value" id="cf-expenses" style="color:var(--red)">—</div>
+    </div>
+    <div class="cf-arrow">−</div>
+    <div class="cf-card">
+      <div class="cf-label">Net SIP Gap</div>
+      <div class="cf-value" id="cf-sip" style="color:var(--accent)">—</div>
+    </div>
+    <div class="cf-arrow">=</div>
+    <div class="cf-card">
+      <div class="cf-label">Free Cash Left</div>
+      <div class="cf-value" id="cf-free">—</div>
+    </div>
+  </div>
+
+  <div class="charts-row">
+    <div class="chart-card">
+      <h3>Monthly SIP — Gross vs Net (after asset offset)</h3>
+      <div class="chart-wrap"><canvas id="chart-sip"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <h3>Asset Allocation — Current Portfolio</h3>
+      <div class="chart-wrap"><canvas id="chart-assets"></canvas></div>
+    </div>
+  </div>
+  <div class="charts-row">
+    <div class="chart-card">
+      <h3>Future Cost by Timeline</h3>
+      <div class="chart-wrap"><canvas id="chart-timeline"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <h3>Need vs Desire — Future Cost</h3>
+      <div class="chart-wrap"><canvas id="chart-nd"></canvas></div>
+    </div>
+  </div>
+</div>
+
+<!-- ════ PROFILE ════ -->
+<div class="page" id="page-profile">
+  <div class="page-header">
+    <h2>Profile</h2>
+    <p>Your personal details — used to personalise timelines and dashboard greetings.</p>
+  </div>
+
+  <div class="card" style="max-width:560px;">
+    <div class="card-header"><h3>Personal Details</h3></div>
+    <div style="padding:24px;display:flex;flex-direction:column;gap:18px;">
+
+      <div style="display:flex;align-items:center;gap:20px;padding-bottom:18px;border-bottom:1px solid var(--border);">
+        <div id="profile-avatar-big" style="width:64px;height:64px;border-radius:50%;background:#3b82f6;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:26px;color:#fff;flex-shrink:0;">?</div>
+        <div>
+          <div id="profile-display-name" style="font-size:18px;font-weight:700;">—</div>
+          <div id="profile-display-email" style="font-size:12px;color:var(--muted);">Not signed in</div>
+          <div id="profile-display-age" style="font-size:12px;color:var(--muted);margin-top:2px;"></div>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+        <div>
+          <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);display:block;margin-bottom:6px;">Full Name</label>
+          <input id="prof-name" type="text" placeholder="e.g. Prudhvi Kumar" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:9px 12px;font-size:13px;outline:none;font-family:inherit;">
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);display:block;margin-bottom:6px;">Current Age</label>
+          <input id="prof-age" type="number" min="18" max="80" placeholder="e.g. 32" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:9px 12px;font-size:13px;outline:none;font-family:inherit;">
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);display:block;margin-bottom:6px;">Retirement Age</label>
+          <input id="prof-retire-age" type="number" min="40" max="80" placeholder="e.g. 60" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:9px 12px;font-size:13px;outline:none;font-family:inherit;">
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);display:block;margin-bottom:6px;">City</label>
+          <input id="prof-city" type="text" placeholder="e.g. Bangalore" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:9px 12px;font-size:13px;outline:none;font-family:inherit;">
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);display:block;margin-bottom:6px;">Spouse Name (optional)</label>
+          <input id="prof-spouse" type="text" placeholder="e.g. Priya" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:9px 12px;font-size:13px;outline:none;font-family:inherit;">
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);display:block;margin-bottom:6px;">Spouse Age (optional)</label>
+          <input id="prof-spouse-age" type="number" min="18" max="80" placeholder="e.g. 30" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:9px 12px;font-size:13px;outline:none;font-family:inherit;">
+        </div>
+      </div>
+
+      <div style="display:flex;align-items:center;justify-content:space-between;padding-top:6px;">
+        <div id="profile-save-status" style="font-size:12px;color:var(--muted);"></div>
+        <button onclick="saveProfile()" style="background:var(--accent);color:#fff;border:none;border-radius:6px;padding:9px 20px;font-size:13px;font-weight:600;cursor:pointer;">Save Profile</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="max-width:560px;">
+    <div class="card-header"><h3>Account</h3></div>
+    <div style="padding:20px;display:flex;flex-direction:column;gap:12px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;">
+        <div>
+          <div style="font-weight:600;font-size:13px;">Signed in as</div>
+          <div id="account-email" style="font-size:12px;color:var(--muted);">—</div>
+        </div>
+        <button onclick="logout()" style="background:transparent;border:1px solid #fecaca;color:var(--red);border-radius:6px;padding:7px 14px;font-size:12px;cursor:pointer;">Sign Out</button>
+      </div>
+      <div style="font-size:12px;color:var(--muted);padding-top:8px;border-top:1px solid var(--border);">
+        Your plan is automatically saved to the database whenever you make a change. You can sign in from any device to access it.
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ════ INCOME & ASSETS ════ -->
+<div class="page" id="page-finances">
+  <div class="page-header">
+    <h2>Income &amp; Assets</h2>
+    <p>Enter current balances, monthly contributions, and growth rates. Every field updates the Monthly Tracker and goal calculations in real-time.</p>
+  </div>
+
+  <!-- Income card -->
+  <div class="card">
+    <div class="card-header"><h3>Monthly Income</h3></div>
+    <div class="finance-grid">
+      <div class="finance-section">
+        <h4>Your Income</h4>
+        <div class="finance-row"><label>Your Salary (take-home)</label><input class="fin-input" id="fi-my-salary" type="number" min="0" placeholder="0"><span class="fin-tag">₹/mo</span></div>
+        <div class="finance-row"><label>Rental / Other Income</label><input class="fin-input" id="fi-other-income" type="number" min="0" placeholder="0"><span class="fin-tag">₹/mo</span></div>
+        <div class="finance-row"><label>Business / Freelance</label><input class="fin-input" id="fi-business-income" type="number" min="0" placeholder="0"><span class="fin-tag">₹/mo</span></div>
+      </div>
+      <div class="finance-section">
+        <h4>Spouse / Partner Income</h4>
+        <div class="finance-row"><label>Spouse Salary (take-home)</label><input class="fin-input" id="fi-spouse-salary" type="number" min="0" placeholder="0"><span class="fin-tag">₹/mo</span></div>
+        <div class="finance-row"><label>Spouse Other Income</label><input class="fin-input" id="fi-spouse-other" type="number" min="0" placeholder="0"><span class="fin-tag">₹/mo</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Expenses card -->
+  <div class="card">
+    <div class="card-header"><h3>Monthly Expenses (excluding investment contributions)</h3></div>
+    <div class="finance-grid">
+      <div class="finance-section">
+        <h4>Fixed</h4>
+        <div class="finance-row"><label>Home Loan EMI</label><input class="fin-input" id="fi-emi-home" type="number" min="0" placeholder="0"><span class="fin-tag">₹/mo</span></div>
+        <div class="finance-row"><label>Car Loan EMI</label><input class="fin-input" id="fi-emi-car" type="number" min="0" placeholder="0"><span class="fin-tag">₹/mo</span></div>
+        <div class="finance-row"><label>Other Loan EMIs</label><input class="fin-input" id="fi-emi-other" type="number" min="0" placeholder="0"><span class="fin-tag">₹/mo</span></div>
+        <div class="finance-row"><label>Insurance Premiums</label><input class="fin-input" id="fi-insurance" type="number" min="0" placeholder="0"><span class="fin-tag">₹/mo</span></div>
+      </div>
+      <div class="finance-section">
+        <h4>Variable</h4>
+        <div class="finance-row"><label>Household / Groceries</label><input class="fin-input" id="fi-household" type="number" min="0" placeholder="0"><span class="fin-tag">₹/mo</span></div>
+        <div class="finance-row"><label>Utilities &amp; Bills</label><input class="fin-input" id="fi-utilities" type="number" min="0" placeholder="0"><span class="fin-tag">₹/mo</span></div>
+        <div class="finance-row"><label>Children's Education</label><input class="fin-input" id="fi-school" type="number" min="0" placeholder="0"><span class="fin-tag">₹/mo</span></div>
+        <div class="finance-row"><label>Lifestyle / Entertainment</label><input class="fin-input" id="fi-lifestyle" type="number" min="0" placeholder="0"><span class="fin-tag">₹/mo</span></div>
+        <div class="finance-row"><label>Other Expenses</label><input class="fin-input" id="fi-misc-exp" type="number" min="0" placeholder="0"><span class="fin-tag">₹/mo</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Assets with monthly contributions -->
+  <div class="card">
+    <div class="card-header">
+      <h3>Assets &amp; Investments</h3>
+      <span style="font-size:11px;color:var(--muted);">Enter current balance, how much you add monthly, and the growth rate</span>
+    </div>
+    <div class="table-wrap">
+      <table class="asset-tbl">
+        <thead>
+          <tr>
+            <th>Asset</th>
+            <th>Category</th>
+            <th style="text-align:right;">Current Balance (₹)</th>
+            <th style="text-align:right;">Monthly Addition (₹)</th>
+            <th style="text-align:center;">Annual Return</th>
+            <th style="text-align:right;">Projected in 1 yr (₹)</th>
+          </tr>
+        </thead>
+        <tbody id="asset-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Liabilities card -->
+  <div class="card">
+    <div class="card-header"><h3>Liabilities (Outstanding Balances)</h3></div>
+    <div class="finance-grid">
+      <div class="finance-section">
+        <h4>Loans</h4>
+        <div class="finance-row"><label>Home Loan Outstanding</label><input class="fin-input" id="fi-loan-home" type="number" min="0" placeholder="0"><span class="fin-tag">₹</span></div>
+        <div class="finance-row"><label>Car Loan Outstanding</label><input class="fin-input" id="fi-loan-car" type="number" min="0" placeholder="0"><span class="fin-tag">₹</span></div>
+        <div class="finance-row"><label>Personal Loan</label><input class="fin-input" id="fi-loan-personal" type="number" min="0" placeholder="0"><span class="fin-tag">₹</span></div>
+      </div>
+      <div class="finance-section">
+        <h4>Other Liabilities</h4>
+        <div class="finance-row"><label>Credit Card Outstanding</label><input class="fin-input" id="fi-cc-debt" type="number" min="0" placeholder="0"><span class="fin-tag">₹</span></div>
+        <div class="finance-row"><label>Education Loan</label><input class="fin-input" id="fi-loan-edu" type="number" min="0" placeholder="0"><span class="fin-tag">₹</span></div>
+        <div class="finance-row"><label>Other Liabilities</label><input class="fin-input" id="fi-other-liab" type="number" min="0" placeholder="0"><span class="fin-tag">₹</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════ NET WORTH ════ -->
+<div class="page" id="page-networth">
+  <div class="page-header">
+    <h2>Net Worth</h2>
+    <p>Your complete financial balance sheet — assets minus liabilities.</p>
+  </div>
+  <div class="kpi-grid">
+    <div class="kpi-card teal">
+      <div class="kpi-label">Total Assets</div>
+      <div class="kpi-value" id="nw-total-assets">—</div>
+      <div class="kpi-sub">All investments &amp; holdings</div>
+    </div>
+    <div class="kpi-card red">
+      <div class="kpi-label">Total Liabilities</div>
+      <div class="kpi-value" id="nw-total-liab">—</div>
+      <div class="kpi-sub">All outstanding debts</div>
+    </div>
+    <div class="kpi-card green">
+      <div class="kpi-label">Net Worth</div>
+      <div class="kpi-value" id="nw-net">—</div>
+      <div class="kpi-sub">Assets − Liabilities</div>
+    </div>
+    <div class="kpi-card purple">
+      <div class="kpi-label">Debt-to-Asset Ratio</div>
+      <div class="kpi-value" id="nw-dta">—</div>
+      <div class="kpi-sub">Lower is better (&lt;30% good)</div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:20px;">
+    <div class="card-header"><h3>Net Worth Bar</h3></div>
+    <div style="padding:20px;">
+      <div class="nw-bar-wrap"><div class="nw-bar-asset" id="nwbar-asset"></div><div class="nw-bar-liab" id="nwbar-liab"></div></div>
+      <div class="nw-bar-legend">
+        <span class="l-asset">Assets: <strong id="nwbar-asset-label">—</strong></span>
+        <span class="l-liab">Liabilities: <strong id="nwbar-liab-label">—</strong></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="charts-row">
+    <div class="chart-card">
+      <h3>Asset Breakdown</h3>
+      <div class="chart-wrap" style="height:280px;"><canvas id="chart-nw-assets"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <h3>Liabilities Breakdown</h3>
+      <div class="chart-wrap" style="height:280px;"><canvas id="chart-nw-liab"></canvas></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><h3>Asset Detail</h3></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Asset</th><th>Category</th><th style="text-align:right;">Current Value (₹)</th></tr></thead>
+        <tbody id="nw-assets-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ════ GOALS ════ -->
+<div class="page" id="page-goals">
+  <div class="page-header">
+    <h2>Goals — Steps 1 to 7</h2>
+    <p>Edit any cell inline. Changes recalculate instantly across all views.</p>
+  </div>
+  <div class="card">
+    <div class="card-header">
+      <h3>All Goals</h3>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-ghost btn-sm" id="sortBtn">↕ Sort by Timeline</button>
+        <button class="btn btn-primary btn-sm" id="showAddForm">+ Add Goal</button>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table><thead><tr><th>#</th><th>Goal</th><th>Note</th><th>Tag</th><th>Timeline</th><th>Priority</th><th>Cost Today (₹)</th><th>Decision</th><th></th></tr></thead>
+      <tbody id="goalsBody"></tbody></table>
+    </div>
+    <div class="add-form" id="addForm" style="display:none;">
+      <div class="field field-goal"><label>Goal Name</label><input type="text" id="af-name" placeholder="e.g. Buy a House"></div>
+      <div class="field field-goal"><label>Note</label><input type="text" id="af-note" placeholder="Clarify your goal…"></div>
+      <div class="field field-sm"><label>Tag</label><select id="af-tag"><option>Need</option><option>Desire</option></select></div>
+      <div class="field field-sm"><label>Timeline</label><select id="af-tl"><option>Immediate</option><option>Short</option><option>Medium</option><option>Long</option></select></div>
+      <div class="field field-xs"><label>Priority</label><input type="number" id="af-pri" min="1" max="20" value="1"></div>
+      <div class="field field-sm"><label>Cost Today (₹)</label><input type="number" id="af-cost" min="0" placeholder="e.g. 5000000"></div>
+      <div class="field field-sm"><label>Decision</label><select id="af-dec"><option>Keep</option><option>Revise</option><option>Drop</option></select></div>
+      <button class="btn btn-primary" id="addGoalConfirm">Add</button>
+      <button class="btn btn-ghost" id="cancelAdd">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════ STEP 8 CALCULATIONS ════ -->
+<div class="page" id="page-calc">
+  <div class="page-header">
+    <h2>Step 8 — Investment Calculations</h2>
+    <p>Inflation-adjusted future costs, asset offsets, and the net monthly SIP gap you need to fill.</p>
+  </div>
+  <div class="card" style="margin-bottom:20px;">
+    <div class="card-header"><h3>Assumptions</h3></div>
+    <div class="assumptions-grid">
+      <div class="assumption-item"><label>Inflation Rate</label>
+        <div class="slider-wrap"><input type="range" id="s-inflation" min="2" max="15" step="0.5" value="6"><span class="slider-val" id="sv-inflation">6.0%</span></div>
+      </div>
+      <div class="assumption-item"><label>Expected Return (p.a.)</label>
+        <div class="slider-wrap"><input type="range" id="s-return" min="4" max="25" step="0.5" value="10"><span class="slider-val" id="sv-return">10.0%</span></div>
+      </div>
+      <div class="assumption-item"><label>Current Year</label>
+        <div style="display:flex;align-items:center;gap:10px;margin-top:4px;">
+          <span id="sv-year" style="font-size:22px;font-weight:700;color:var(--teal);"></span>
+          <span style="font-size:11px;color:var(--muted);">Auto-detected from your device</span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="info-banner" id="calc-offset-note"></div>
+  <div class="card">
+    <div class="card-header"><h3>Calculation Results</h3><span style="font-size:11px;color:var(--muted);">Net SIP = what you still need to invest after your existing assets do their work</span></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>#</th><th>Goal</th><th>Tag</th><th>Timeline</th><th>P</th><th>Cost Today</th><th>Yrs</th><th>Future Cost</th><th>Asset Offset</th><th>Net Corpus Gap</th><th>Gross SIP</th><th>Net SIP</th><th>Eq/Debt</th></tr></thead>
+        <tbody id="calcBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ════ MONTHLY TRACKER ════ -->
+<div class="page" id="page-tracker">
+  <div class="page-header">
+    <h2>Monthly Tracker</h2>
+    <p>Forward projection — how each asset and your bank balance changes month by month for the next 24 months.</p>
+  </div>
+  <div class="kpi-grid" style="margin-bottom:20px;">
+    <div class="kpi-card teal">
+      <div class="kpi-label">Monthly Contributions</div>
+      <div class="kpi-value" id="tr-total-contrib">—</div>
+      <div class="kpi-sub">Total going into investments</div>
+    </div>
+    <div class="kpi-card green">
+      <div class="kpi-label">Bank Balance Next Month</div>
+      <div class="kpi-value" id="tr-bank-next">—</div>
+      <div class="kpi-sub">After salary, expenses &amp; contribs</div>
+    </div>
+    <div class="kpi-card accent">
+      <div class="kpi-label">Portfolio in 12 Months</div>
+      <div class="kpi-value" id="tr-port-12">—</div>
+      <div class="kpi-sub">All assets combined</div>
+    </div>
+    <div class="kpi-card purple">
+      <div class="kpi-label">Portfolio in 24 Months</div>
+      <div class="kpi-value" id="tr-port-24">—</div>
+      <div class="kpi-sub">All assets combined</div>
+    </div>
+  </div>
+  <div class="chart-card" style="margin-bottom:20px;">
+    <h3>Asset Growth — Month by Month (24 months)</h3>
+    <div class="chart-wrap" style="height:300px;"><canvas id="chart-tracker-line"></canvas></div>
+  </div>
+  <div class="card">
+    <div class="card-header">
+      <h3>Month-by-Month Breakdown</h3>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <span style="font-size:11px;color:var(--muted);">Showing 24 months forward from today</span>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table id="tracker-table">
+        <thead id="tracker-thead"></thead>
+        <tbody id="tracker-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ════ CHARTS ════ -->
+<div class="page" id="page-charts">
+  <div class="page-header"><h2>Charts &amp; Analytics</h2><p>Visual breakdown of goals, assets, and investment requirements.</p></div>
+  <div class="charts-row">
+    <div class="chart-card"><h3>Future Cost by Goal</h3><div class="chart-wrap" style="height:280px;"><canvas id="chart2-future"></canvas></div></div>
+    <div class="chart-card"><h3>Gross vs Net Monthly SIP</h3><div class="chart-wrap" style="height:280px;"><canvas id="chart2-sip"></canvas></div></div>
+  </div>
+  <div class="charts-row">
+    <div class="chart-card"><h3>Cost Today vs Inflation-Adjusted Future Cost</h3><div class="chart-wrap" style="height:280px;"><canvas id="chart2-compare"></canvas></div></div>
+    <div class="chart-card"><h3>Goals by Timeline &amp; Type</h3><div class="chart-wrap" style="height:280px;"><canvas id="chart2-breakdown"></canvas></div></div>
+  </div>
+  <div class="charts-row">
+    <div class="chart-card"><h3>Asset Growth Projection (Years 1–15)</h3><div class="chart-wrap" style="height:280px;"><canvas id="chart2-growth"></canvas></div></div>
+    <div class="chart-card"><h3>Monthly Cash Flow Breakdown</h3><div class="chart-wrap" style="height:280px;"><canvas id="chart2-cashflow"></canvas></div></div>
+  </div>
+</div>
+
+<!-- ════ CHANGE LOG ════ -->
+<div class="page" id="page-log">
+  <div class="page-header"><h2>Change Log</h2><p>Every edit tracked in real-time.</p></div>
+  <div class="card">
+    <div class="card-header"><h3>Activity</h3><button class="btn btn-ghost btn-sm" id="clearLog">Clear Log</button></div>
+    <ul class="log-list" id="logList"><li class="log-item"><div class="log-dot"></div><div class="log-text" style="color:var(--muted);">No changes yet.</div></li></ul>
+  </div>
+</div>
+
+</main>
+</div>
+<div class="toast" id="toast"></div>
+</body>
+</html>
+
+<script>
+// ════════════════════════════════════════════════════════════════════
+// DATA
+// ════════════════════════════════════════════════════════════════════
+const TIMELINE_YEARS = { Immediate: 0.5, Short: 3, Medium: 7, Long: 15 };
+const EQUITY = { Immediate: 10, Short: 40, Medium: 70, Long: 85 };
+
+let goals = [
+  { id:1,  name:"Buy House",               note:"3BHK in Bangalore",         tag:"Need",   timeline:"Long",      priority:1, costToday:8000000,  decision:"Keep" },
+  { id:2,  name:"Retirement",              note:"Retire at age 60",           tag:"Need",   timeline:"Long",      priority:2, costToday:30000000, decision:"Keep" },
+  { id:3,  name:"Child 1 Higher Education",note:"Engineering / MBA abroad",   tag:"Need",   timeline:"Medium",    priority:1, costToday:2500000,  decision:"Keep" },
+  { id:4,  name:"Child 1 Marriage",        note:"",                           tag:"Need",   timeline:"Long",      priority:3, costToday:2000000,  decision:"Keep" },
+  { id:5,  name:"Foreign Trip",            note:"Europe trip in 2-3 years",   tag:"Desire", timeline:"Short",     priority:1, costToday:500000,   decision:"Keep" },
+  { id:6,  name:"Buy Car",                 note:"Mid-segment sedan",          tag:"Desire", timeline:"Short",     priority:2, costToday:1000000,  decision:"Keep" },
+  { id:7,  name:"Reduce Credit Card Debt", note:"Pay off ₹2L outstanding",    tag:"Need",   timeline:"Immediate", priority:1, costToday:200000,   decision:"Keep" },
+  { id:8,  name:"Emergency Fund",          note:"6 months expenses",          tag:"Need",   timeline:"Immediate", priority:2, costToday:600000,   decision:"Keep" },
+  { id:9,  name:"Modifications in House",  note:"Interior renovation",        tag:"Desire", timeline:"Medium",    priority:2, costToday:1000000,  decision:"Revise"},
+  { id:10, name:"Europe Trip for Parents", note:"Gift trip for parents",       tag:"Desire", timeline:"Short",     priority:3, costToday:500000,   decision:"Keep" },
+];
+let nextId = 11;
+let assumptions = { inflation: 6, returns: 10, year: new Date().getFullYear() };
+let changeLog = [];
+let chartInstances = {};
+let sortByTimeline = false;
+
+// ── Income / Expense IDs ──────────────────────────────────────────
+const INCOME_IDS  = ["fi-my-salary","fi-other-income","fi-business-income","fi-spouse-salary","fi-spouse-other"];
+const EXPENSE_IDS = ["fi-emi-home","fi-emi-car","fi-emi-other","fi-insurance","fi-household","fi-utilities","fi-school","fi-lifestyle","fi-misc-exp"];
+
+// ── Asset data model — each asset has balance, monthly contribution, annual return rate ──
+// Rates are user-editable defaults; stored in this array and reflected in rendered inputs
+const ASSET_DEF = [
+  // id, label, cat, defaultRate (annual %)
+  { id:"epf",       label:"Your EPF / PF",       cat:"Retirement", rate:8.25, balance:0, monthly:0 },
+  { id:"epf-sp",    label:"Spouse EPF / PF",      cat:"Retirement", rate:8.25, balance:0, monthly:0 },
+  { id:"ppf",       label:"PPF",                  cat:"Retirement", rate:7.1,  balance:0, monthly:0 },
+  { id:"nps",       label:"NPS",                  cat:"Retirement", rate:10,   balance:0, monthly:0 },
+  { id:"gratuity",  label:"Gratuity",             cat:"Retirement", rate:0,    balance:0, monthly:0 },
+  { id:"mf",        label:"Mutual Funds",         cat:"Market",     rate:12,   balance:0, monthly:0 },
+  { id:"stocks",    label:"Stocks / Equity",      cat:"Market",     rate:12,   balance:0, monthly:0 },
+  { id:"ulip",      label:"ULIP / Endowment",     cat:"Market",     rate:7,    balance:0, monthly:0 },
+  { id:"fd",        label:"Fixed Deposits",       cat:"Fixed",      rate:7,    balance:0, monthly:0 },
+  { id:"savings",   label:"Savings Account",      cat:"Fixed",      rate:3.5,  balance:0, monthly:0 },
+  { id:"gold",      label:"Gold",                 cat:"Fixed",      rate:8,    balance:0, monthly:0 },
+  { id:"bonds",     label:"Bonds / Debentures",   cat:"Fixed",      rate:7,    balance:0, monthly:0 },
+  { id:"realestate",label:"Real Estate Equity",   cat:"Real Estate",rate:8,    balance:0, monthly:0 },
+  { id:"crypto",    label:"Crypto / Alt",         cat:"Other",      rate:15,   balance:0, monthly:0 },
+  { id:"other",     label:"Other Assets",         cat:"Other",      rate:6,    balance:0, monthly:0 },
+];
+
+const LIAB_DEF = [
+  { id:"fi-loan-home",     label:"Home Loan" },
+  { id:"fi-loan-car",      label:"Car Loan" },
+  { id:"fi-loan-personal", label:"Personal Loan" },
+  { id:"fi-cc-debt",       label:"Credit Card" },
+  { id:"fi-loan-edu",      label:"Education Loan" },
+  { id:"fi-other-liab",    label:"Other Liabilities" },
+];
+
+function finVal(id) { return +(document.getElementById(id)?.value) || 0; }
+function totalIncome()   { return INCOME_IDS.reduce((s,id) => s + finVal(id), 0); }
+function totalExpenses() { return EXPENSE_IDS.reduce((s,id) => s + finVal(id), 0); }
+function totalAssets()   { return ASSET_DEF.reduce((s,a) => s + a.balance, 0); }
+function totalMonthlyContribs() { return ASSET_DEF.reduce((s,a) => s + a.monthly, 0); }
+function totalLiab()     { return LIAB_DEF.reduce((s,a) => s + finVal(a.id), 0); }
+function netWorth()      { return totalAssets() - totalLiab(); }
+
+// Projected value of an asset after n months:
+//   balance * (1 + r_mo)^n  +  monthly * [(1+r_mo)^n - 1] / r_mo
+function projectedAsset(a, months) {
+  const r = (a.rate / 100) / 12;  // monthly rate
+  if (r === 0) return a.balance + a.monthly * months;
+  const factor = Math.pow(1 + r, months);
+  return a.balance * factor + a.monthly * (factor - 1) / r;
+}
+
+// Total projected portfolio after n months
+function totalProjected(months) {
+  return ASSET_DEF.reduce((s, a) => s + projectedAsset(a, months), 0);
+}
+
+// Bank balance projection: starts at current savings balance, adds (income - expenses - contribs) each month
+// savings asset acts as the "bank" starting point
+function bankBalanceAfter(months) {
+  const monthlySavingsDelta = totalIncome() - totalExpenses() - totalMonthlyContribs();
+  // bank doesn't compound here (it's held in savings account which is already in ASSET_DEF)
+  // we track it as cumulative cash surplus on top of the savings asset
+  return monthlySavingsDelta * months;
+}
+
+// ════════════════════════════════════════════════════════════════════
+// CORE MATH
+// ════════════════════════════════════════════════════════════════════
+function calcGoal(g) {
+  const infl   = assumptions.inflation / 100;
+  const ret    = assumptions.returns  / 100;
+  const yrs    = TIMELINE_YEARS[g.timeline] || 3;
+  const n      = Math.round(yrs * 12);
+  const r      = ret / 12;
+  const future = g.costToday * Math.pow(1 + infl, yrs);
+
+  // Gross SIP (ignoring existing assets)
+  let grossSip;
+  if (r === 0 || n === 0) { grossSip = n > 0 ? future / n : future; }
+  else { grossSip = future * r / (Math.pow(1 + r, n) - 1); }
+
+  // Asset offset — each asset projected forward using its own rate + monthly contributions
+  const months = Math.round(yrs * 12);
+  const assetFV = totalProjected(months); // uses per-asset rate and monthly contrib
+  // Distribute proportionally across active goals by future cost weight
+  const active = goals.filter(g => g.decision !== "Drop" && g.costToday > 0);
+  const totalFuture = active.reduce((s,g2) => {
+    const yrs2 = TIMELINE_YEARS[g2.timeline] || 3;
+    return s + g2.costToday * Math.pow(1 + infl, yrs2);
+  }, 0);
+  const weight = totalFuture > 0 ? future / totalFuture : 0;
+  const offset = Math.min(assetFV * weight, future);
+
+  const netCorpus = Math.max(0, future - offset);
+  let netSip;
+  if (r === 0 || n === 0) { netSip = n > 0 ? netCorpus / n : netCorpus; }
+  else { netSip = netCorpus * r / (Math.pow(1 + r, n) - 1); }
+
+  const eq = EQUITY[g.timeline] || 60;
+  return {
+    future: Math.round(future),
+    grossSip: Math.round(grossSip),
+    offset: Math.round(offset),
+    netCorpus: Math.round(netCorpus),
+    netSip: Math.round(netSip),
+    years: yrs,
+    equity: eq,
+    debt: 100 - eq
+  };
+}
+
+function activeGoals() { return goals.filter(g => g.decision !== "Drop"); }
+
+// ════════════════════════════════════════════════════════════════════
+// FORMATTING
+// ════════════════════════════════════════════════════════════════════
+function fmtINR(n, compact = true) {
+  if (n === null || n === undefined || (n === 0 && compact)) return "—";
+  if (compact) {
+    if (Math.abs(n) >= 10000000) return "₹" + (n / 10000000).toFixed(2) + " Cr";
+    if (Math.abs(n) >= 100000)   return "₹" + (n / 100000).toFixed(2) + " L";
+  }
+  return "₹" + Number(n).toLocaleString("en-IN");
+}
+function fmtINRsigned(n) {
+  const s = fmtINR(Math.abs(n));
+  return n < 0 ? "−" + s : s;
+}
+function tlBadge(tl) {
+  const c = { Immediate:"badge-imm", Short:"badge-short", Medium:"badge-medium", Long:"badge-long" }[tl];
+  return `<span class="badge ${c}">${tl}</span>`;
+}
+function tagBadge(t) { return `<span class="badge badge-${t.toLowerCase()}">${t}</span>`; }
+
+// ════════════════════════════════════════════════════════════════════
+// NAV
+// ════════════════════════════════════════════════════════════════════
+document.querySelectorAll(".nav-item").forEach(item => {
+  item.addEventListener("click", () => {
+    document.querySelectorAll(".nav-item").forEach(n => n.classList.remove("active"));
+    document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
+    item.classList.add("active");
+    document.getElementById("page-" + item.dataset.page).classList.add("active");
+    if (item.dataset.page === "charts")   renderDetailCharts();
+    if (item.dataset.page === "networth") renderNetWorthPage();
+    if (item.dataset.page === "tracker")  renderTrackerPage();
+  });
+});
+
+// cf-card-link clicks — navigate to the target page
+document.querySelectorAll(".cf-card-link").forEach(card => {
+  card.addEventListener("click", () => {
+    const page = card.dataset.nav;
+    document.querySelectorAll(".nav-item").forEach(n => n.classList.toggle("active", n.dataset.page === page));
+    document.querySelectorAll(".page").forEach(p => p.classList.toggle("active", p.id === "page-" + page));
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════
+// ASSET TABLE — rendered dynamically so balance/monthly/rate are live
+// ════════════════════════════════════════════════════════════════════
+function renderAssetTable() {
+  const tbody = document.getElementById("asset-tbody");
+  if (!tbody) return;
+  tbody.innerHTML = ASSET_DEF.map((a, i) => {
+    const proj1yr = projectedAsset(a, 12);
+    return `<tr>
+      <td><strong>${a.label}</strong></td>
+      <td><span style="font-size:11px;color:var(--muted);">${a.cat}</span></td>
+      <td><input type="number" min="0" value="${a.balance||''}" placeholder="0"
+          data-asset="${i}" data-field="balance" style="width:130px;border:1px solid var(--border);border-radius:5px;padding:5px 8px;font-size:13px;text-align:right;"></td>
+      <td><input type="number" min="0" value="${a.monthly||''}" placeholder="0"
+          data-asset="${i}" data-field="monthly" style="width:110px;border:1px solid var(--border);border-radius:5px;padding:5px 8px;font-size:13px;text-align:right;"></td>
+      <td style="text-align:center;">
+        <input type="number" min="0" max="50" step="0.1" value="${a.rate}"
+          data-asset="${i}" data-field="rate"
+          style="width:70px;border:1px solid var(--border);border-radius:5px;padding:5px 8px;font-size:13px;text-align:right;">
+        <span style="font-size:11px;color:var(--muted);">%</span>
+      </td>
+      <td style="text-align:right;font-weight:700;color:var(--green);font-size:13px;">${a.balance||a.monthly ? fmtINR(Math.round(proj1yr)) : "—"}</td>
+    </tr>`;
+  }).join("");
+
+  tbody.querySelectorAll("input").forEach(el => {
+    el.addEventListener("input", () => {
+      const i = +el.dataset.asset, field = el.dataset.field;
+      const oldVal = ASSET_DEF[i][field];
+      const newVal = +el.value || 0;
+      ASSET_DEF[i][field] = newVal;
+      // Update the projected 1yr cell for this row without re-rendering whole table
+      const row = el.closest("tr");
+      const a = ASSET_DEF[i];
+      row.querySelector("td:last-child").textContent =
+        (a.balance || a.monthly) ? fmtINR(Math.round(projectedAsset(a, 12))) : "—";
+      recalcLive();
+      logChange("edit", `${a.label} ${field} → ₹${newVal.toLocaleString('en-IN')}`);
+    });
+  });
+}
+
+// ════════════════════════════════════════════════════════════════════
+// FINANCE INPUTS — income/expense/liab live binding
+// ════════════════════════════════════════════════════════════════════
+function bindFinanceInputs() {
+  [...INCOME_IDS, ...EXPENSE_IDS, ...LIAB_DEF.map(a=>a.id)].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener("input", () => {
+      recalcLive();
+      logChange("edit", `"${id.replace('fi-','')}" → ₹${Number(el.value).toLocaleString('en-IN')}`);
+    });
+  });
+}
+
+// ════════════════════════════════════════════════════════════════════
+// GOALS TABLE
+// ════════════════════════════════════════════════════════════════════
+function esc(s) { return (s || "").replace(/"/g, "&quot;"); }
+
+function renderGoals() {
+  const tbody = document.getElementById("goalsBody");
+  let list = [...goals];
+  if (sortByTimeline) {
+    const order = { Immediate:0, Short:1, Medium:2, Long:3 };
+    list.sort((a,b) => order[a.timeline] - order[b.timeline] || a.priority - b.priority);
+  }
+  tbody.innerHTML = list.map(g => {
+    const dropped = g.decision === "Drop";
+    return `<tr class="${dropped?"dropped":""}" data-id="${g.id}">
+      <td style="color:var(--muted);width:32px;">${g.id}</td>
+      <td style="min-width:160px;"><input type="text" value="${esc(g.name)}" data-field="name" data-id="${g.id}"></td>
+      <td style="min-width:140px;"><input type="text" value="${esc(g.note)}" data-field="note" data-id="${g.id}" placeholder="—"></td>
+      <td><select data-field="tag" data-id="${g.id}">
+        <option ${g.tag==="Need"?"selected":""}>Need</option>
+        <option ${g.tag==="Desire"?"selected":""}>Desire</option>
+      </select></td>
+      <td><select data-field="timeline" data-id="${g.id}">
+        <option ${g.timeline==="Immediate"?"selected":""}>Immediate</option>
+        <option ${g.timeline==="Short"?"selected":""}>Short</option>
+        <option ${g.timeline==="Medium"?"selected":""}>Medium</option>
+        <option ${g.timeline==="Long"?"selected":""}>Long</option>
+      </select></td>
+      <td style="width:60px;"><input type="number" value="${g.priority}" min="1" max="20" data-field="priority" data-id="${g.id}" style="width:50px;"></td>
+      <td style="min-width:130px;"><input type="number" value="${g.costToday}" min="0" data-field="costToday" data-id="${g.id}"></td>
+      <td><select data-field="decision" data-id="${g.id}">
+        <option ${g.decision==="Keep"?"selected":""}>Keep</option>
+        <option ${g.decision==="Revise"?"selected":""}>Revise</option>
+        <option ${g.decision==="Drop"?"selected":""}>Drop</option>
+      </select></td>
+      <td style="width:40px;"><button class="btn-icon del-goal" data-id="${g.id}" title="Delete">🗑</button></td>
+    </tr>`;
+  }).join("");
+
+  tbody.querySelectorAll("input,select").forEach(el => {
+    el.addEventListener("change", onGoalFieldChange);
+    // On every keystroke: update data model + recalc everything EXCEPT the goals table
+    // (re-rendering the table mid-type would destroy the focused input)
+    if (el.tagName === "INPUT") el.addEventListener("input", () => {
+      const g = goals.find(g => g.id === +el.dataset.id);
+      if (!g) return;
+      g[el.dataset.field] = el.dataset.field === "costToday" || el.dataset.field === "priority" ? +el.value : el.value;
+      recalcLive();
+    });
+  });
+  tbody.querySelectorAll(".del-goal").forEach(btn => {
+    btn.addEventListener("click", () => deleteGoal(+btn.dataset.id));
+  });
+}
+
+function onGoalFieldChange(e) {
+  const el = e.target, id = +el.dataset.id, field = el.dataset.field;
+  const g = goals.find(g => g.id === id);
+  if (!g) return;
+  const oldVal = g[field];
+  const newVal = field === "costToday" || field === "priority" ? +el.value : el.value;
+  if (oldVal === newVal) return;
+  logChange("edit", `"${g.name}": ${field} → "${newVal}"`);
+  g[field] = newVal;
+  recalcAll();
+  showToast(`Updated "${g.name}"`);
+}
+
+function deleteGoal(id) {
+  const g = goals.find(g => g.id === id);
+  if (!g || !confirm(`Delete goal "${g.name}"?`)) return;
+  goals = goals.filter(g => g.id !== id);
+  logChange("del", `Deleted goal "${g.name}"`);
+  recalcAll();
+  showToast(`Deleted "${g.name}"`);
+}
+
+// ════════════════════════════════════════════════════════════════════
+// ADD GOAL
+// ════════════════════════════════════════════════════════════════════
+document.getElementById("showAddForm").addEventListener("click", () => {
+  const f = document.getElementById("addForm");
+  f.style.display = f.style.display === "none" ? "flex" : "none";
+});
+document.getElementById("cancelAdd").addEventListener("click", () => {
+  document.getElementById("addForm").style.display = "none";
+});
+document.getElementById("addGoalConfirm").addEventListener("click", () => {
+  const name = document.getElementById("af-name").value.trim();
+  if (!name) { showToast("Please enter a goal name"); return; }
+  const g = {
+    id: nextId++, name,
+    note:     document.getElementById("af-note").value.trim(),
+    tag:      document.getElementById("af-tag").value,
+    timeline: document.getElementById("af-tl").value,
+    priority: +document.getElementById("af-pri").value || 1,
+    costToday:+document.getElementById("af-cost").value || 0,
+    decision: document.getElementById("af-dec").value,
+  };
+  goals.push(g);
+  logChange("add", `Added goal "${g.name}" (${g.timeline}, ${g.tag})`);
+  document.getElementById("addForm").style.display = "none";
+  ["af-name","af-note","af-cost"].forEach(id => document.getElementById(id).value = "");
+  recalcAll();
+  showToast(`Added "${g.name}"`);
+});
+document.getElementById("sortBtn").addEventListener("click", () => {
+  sortByTimeline = !sortByTimeline;
+  document.getElementById("sortBtn").textContent = sortByTimeline ? "↕ Original Order" : "↕ Sort by Timeline";
+  renderGoals();
+});
+
+// ════════════════════════════════════════════════════════════════════
+// CALC TABLE
+// ════════════════════════════════════════════════════════════════════
+function renderCalc() {
+  const tbody = document.getElementById("calcBody");
+  const active = activeGoals();
+  let tFuture = 0, tGross = 0, tOffset = 0, tNet = 0, tNetSip = 0;
+
+  const rows = active.map(g => {
+    const c = calcGoal(g);
+    tFuture += c.future; tGross += c.grossSip; tOffset += c.offset; tNet += c.netCorpus; tNetSip += c.netSip;
+    return `<tr>
+      <td style="color:var(--muted);">${g.id}</td>
+      <td><strong>${g.name}</strong></td>
+      <td>${tagBadge(g.tag)}</td>
+      <td>${tlBadge(g.timeline)}</td>
+      <td><span class="priority-num">${g.priority}</span></td>
+      <td class="calc-amount">${fmtINR(g.costToday)}</td>
+      <td style="text-align:center;">${c.years < 1 ? "<1" : c.years}</td>
+      <td class="calc-amount">${fmtINR(c.future)}</td>
+      <td class="calc-offset">${c.offset > 0 ? "−" + fmtINR(c.offset) : "—"}</td>
+      <td class="calc-amount">${fmtINR(c.netCorpus)}</td>
+      <td class="calc-sip">${fmtINR(c.grossSip)}/mo</td>
+      <td class="calc-net">${fmtINR(c.netSip)}/mo</td>
+      <td style="font-size:11px;">${c.equity}% E / ${c.debt}% D</td>
+    </tr>`;
+  });
+
+  rows.push(`<tr class="totals-row">
+    <td colspan="4" style="text-align:right;color:#94a3b8;">TOTAL</td>
+    <td></td>
+    <td></td>
+    <td></td>
+    <td class="calc-amount">${fmtINR(tFuture)}</td>
+    <td class="calc-offset" style="color:#7dd3fc;">${tOffset>0 ? "−"+fmtINR(tOffset) : "—"}</td>
+    <td class="calc-amount">${fmtINR(tNet)}</td>
+    <td class="calc-sip">${fmtINR(tGross)}/mo</td>
+    <td class="calc-net">${fmtINR(tNetSip)}/mo</td>
+    <td></td>
+  </tr>`);
+
+  tbody.innerHTML = rows.join("");
+
+  // Update offset note
+  const note = document.getElementById("calc-offset-note");
+  const ta = totalAssets();
+  if (ta > 0) {
+    note.innerHTML = `<strong>Asset Offset Active:</strong> Your total existing assets of <strong>${fmtINR(ta)}</strong> are projected to grow to <strong>${fmtINR(Math.round(ta * Math.pow(1 + assumptions.returns/100, 10)))}</strong> in 10 years at ${assumptions.returns}% return. This growth is distributed proportionally across your goals to reduce the SIP you need to start fresh.`;
+    note.style.display = "block";
+  } else {
+    note.style.display = "none";
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════
+// ASSUMPTIONS SLIDERS
+// ════════════════════════════════════════════════════════════════════
+function bindSlider(id, key, suffix, decimals = 1) {
+  const sl = document.getElementById("s-" + id);
+  const sv = document.getElementById("sv-" + id);
+  sl.addEventListener("input", () => {
+    const v = +sl.value;
+    sv.textContent = v.toFixed(decimals) + suffix;
+    logChange("edit", `Assumption "${key}" → ${v}${suffix}`);
+    assumptions[key] = v;
+    recalcAll();
+  });
+}
+bindSlider("inflation", "inflation", "%");
+bindSlider("return",    "returns",   "%");
+document.getElementById("sv-year").textContent = assumptions.year;
+
+// ════════════════════════════════════════════════════════════════════
+// KPI CARDS
+// ════════════════════════════════════════════════════════════════════
+function renderKPIs() {
+  const active = activeGoals();
+  let tFuture = 0, tGross = 0, tNetSip = 0, tOffset = 0;
+  active.forEach(g => {
+    const c = calcGoal(g);
+    tFuture += c.future; tGross += c.grossSip; tNetSip += c.netSip; tOffset += c.offset;
+  });
+
+  const income   = totalIncome();
+  const expenses = totalExpenses();
+  const surplus  = income - expenses;
+  const freeCash = surplus - tNetSip;
+  const nw       = netWorth();
+  const ta       = totalAssets();
+
+  // Projected corpus using per-asset rates + monthly contributions (10yr horizon)
+  const corpus = ta > 0 ? totalProjected(120) : 0;
+
+  set("kpi-networth",  fmtINR(nw));
+  set("kpi-surplus",   income > 0 ? fmtINR(surplus) + "/mo" : "—");
+  set("kpi-future",    fmtINR(tFuture));
+  set("kpi-corpus",    ta > 0 ? fmtINR(Math.round(corpus)) : "—");
+  set("kpi-gap",       fmtINR(tNetSip) + (tNetSip > 0 ? "/mo" : ""));
+
+  // Cash flow row
+  set("cf-income",   income > 0 ? fmtINR(income) : "— tap to add");
+  set("cf-expenses", expenses > 0 ? fmtINR(expenses) : "—");
+  set("cf-sip",      tNetSip > 0 ? fmtINR(tNetSip) : "—");
+  const fc = document.getElementById("cf-free");
+  if (fc) {
+    fc.textContent = income > 0 ? fmtINR(Math.abs(freeCash)) : "—";
+    fc.style.color = freeCash >= 0 ? "var(--green)" : "var(--red)";
+    fc.parentElement.querySelector(".cf-label").textContent = freeCash >= 0 ? "Free Cash Left" : "Monthly Shortfall";
+  }
+}
+function set(id, val) { const el = document.getElementById(id); if (el) el.textContent = val; }
+
+// ════════════════════════════════════════════════════════════════════
+// NET WORTH PAGE
+// ════════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════════
+// MONTHLY TRACKER PAGE
+// ════════════════════════════════════════════════════════════════════
+function renderTrackerPage() {
+  const MONTHS = 24;
+  const now = new Date();
+  const income = totalIncome(), expenses = totalExpenses(), contribs = totalMonthlyContribs();
+  const monthlyCashDelta = income - expenses - contribs;
+  const savingsA = ASSET_DEF.find(a => a.id === "savings");
+  const bankStart = savingsA ? savingsA.balance : 0;
+
+  set("tr-total-contrib", contribs > 0 ? fmtINR(contribs) + "/mo" : "—");
+  set("tr-bank-next",  fmtINR(Math.max(0, bankStart + monthlyCashDelta)));
+  set("tr-port-12",  fmtINR(Math.round(totalProjected(12))));
+  set("tr-port-24",  fmtINR(Math.round(totalProjected(24))));
+
+  const monthLabels = Array.from({length: MONTHS}, (_, i) => {
+    const d = new Date(now.getFullYear(), now.getMonth() + i + 1, 1);
+    return d.toLocaleDateString("en-IN", { month:"short", year:"2-digit" });
+  });
+
+  const activeAssets = ASSET_DEF.filter(a => a.balance > 0 || a.monthly > 0);
+  const TCOLORS = ["#3b82f6","#16a34a","#d97706","#7c3aed","#0891b2","#dc2626","#be185d","#059669","#ea580c","#6366f1","#f59e0b","#64748b","#10b981","#f43f5e","#8b5cf6"];
+
+  destroyChart("chart-tracker-line");
+  const ctx = document.getElementById("chart-tracker-line")?.getContext("2d");
+  if (ctx) {
+    chartInstances["chart-tracker-line"] = new Chart(ctx, {
+      type: "line",
+      data: {
+        labels: monthLabels,
+        datasets: [
+          ...activeAssets.map((a, i) => ({
+            label: a.label,
+            data: Array.from({length: MONTHS}, (_, m) => Math.round(projectedAsset(a, m + 1))),
+            borderColor: TCOLORS[i % TCOLORS.length], backgroundColor: "transparent",
+            tension: 0.3, pointRadius: 2, borderWidth: 2
+          })),
+          {
+            label: "Bank Balance",
+            data: Array.from({length: MONTHS}, (_, m) => Math.max(0, bankStart + monthlyCashDelta * (m + 1))),
+            borderColor: "#1e293b", backgroundColor: "transparent",
+            tension: 0.3, pointRadius: 2, borderWidth: 2, borderDash: [5, 3]
+          }
+        ]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { position: "bottom", labels: { font: { size: 10 }, boxWidth: 12 } },
+          tooltip: { callbacks: { label: ctx => ctx.dataset.label + ": " + fmtINR(ctx.raw) } } },
+        scales: { y: { ticks: { callback: v => fmtINR(v) }, grid: { color: "#f1f5f9" } }, x: { grid: { display: false } } }
+      }
+    });
+  }
+
+  // Table
+  const thead = document.getElementById("tracker-thead");
+  const tbody = document.getElementById("tracker-tbody");
+  if (!thead || !tbody) return;
+
+  thead.innerHTML = `<tr>
+    <th style="position:sticky;left:0;background:#f8fafc;min-width:160px;">Asset</th>
+    <th>Now</th>
+    ${monthLabels.map(m => `<th>${m}</th>`).join("")}
+  </tr>`;
+
+  tbody.innerHTML = [
+    ...activeAssets.map(a => {
+      const vals = Array.from({length: MONTHS}, (_, m) => Math.round(projectedAsset(a, m + 1)));
+      return `<tr>
+        <td style="position:sticky;left:0;background:#fff;font-weight:600;white-space:nowrap;min-width:160px;">${a.label}
+          <span style="font-size:10px;color:var(--muted);display:block;">${a.rate}% · +${fmtINR(a.monthly)}/mo</span></td>
+        <td class="calc-amount">${fmtINR(a.balance)}</td>
+        ${vals.map((v,i) => { const prev = i===0?a.balance:Math.round(projectedAsset(a,i)); const cls=v>prev?"tracker-up":v<prev?"tracker-down":""; return `<td class="${cls}">${fmtINR(v)}</td>`; }).join("")}
+      </tr>`;
+    }),
+    (() => {
+      const vals = Array.from({length: MONTHS}, (_, m) => Math.max(0, bankStart + monthlyCashDelta * (m + 1)));
+      return `<tr class="tracker-bank">
+        <td style="position:sticky;left:0;background:#eff6ff;font-weight:600;min-width:160px;">Bank Balance
+          <span style="font-size:10px;color:var(--muted);display:block;">Income − Expenses − Contribs</span></td>
+        <td class="calc-amount">${fmtINR(bankStart)}</td>
+        ${vals.map((v,i)=>{const prev=i===0?bankStart:Math.max(0,bankStart+monthlyCashDelta*i);const cls=v>prev?"tracker-up":v<prev?"tracker-down":"";return `<td class="${cls}">${fmtINR(v)}</td>`;}).join("")}
+      </tr>`;
+    })(),
+    (() => {
+      const vals = Array.from({length: MONTHS}, (_, m) => Math.round(totalProjected(m + 1)));
+      return `<tr class="totals-row">
+        <td style="position:sticky;left:0;background:#1e293b;min-width:160px;font-weight:700;">Total Portfolio</td>
+        <td>${fmtINR(totalAssets())}</td>
+        ${vals.map(v => `<td class="calc-net">${fmtINR(v)}</td>`).join("")}
+      </tr>`;
+    })()
+  ].join("");
+}
+
+// ════════════════════════════════════════════════════════════════════
+// NET WORTH PAGE
+// ════════════════════════════════════════════════════════════════════
+function renderNetWorthPage() {
+  const ta = totalAssets(), tl = totalLiab(), nw = ta - tl;
+  set("nw-total-assets", fmtINR(ta));
+  set("nw-total-liab",   fmtINR(tl));
+  set("nw-net",          fmtINR(nw));
+  const dta = ta > 0 ? ((tl / ta) * 100).toFixed(1) + "%" : "—";
+  set("nw-dta", dta);
+
+  const total = ta + tl;
+  const aBar = document.getElementById("nwbar-asset");
+  const lBar = document.getElementById("nwbar-liab");
+  if (aBar && total > 0) {
+    aBar.style.width = ((ta / total) * 100).toFixed(1) + "%";
+    lBar.style.width = ((tl / total) * 100).toFixed(1) + "%";
+  }
+  set("nwbar-asset-label", fmtINR(ta));
+  set("nwbar-liab-label",  fmtINR(tl));
+
+  const tbody = document.getElementById("nw-assets-tbody");
+  if (tbody) {
+    tbody.innerHTML = ASSET_DEF
+      .filter(a => a.balance > 0)
+      .map(a => `<tr><td>${a.label}</td><td style="color:var(--muted);">${a.cat}</td><td style="text-align:right;font-weight:600;color:var(--green);">${fmtINR(a.balance)}</td></tr>`)
+      .join("") || `<tr><td colspan="3" style="color:var(--muted);padding:16px;">No assets entered yet.</td></tr>`;
+  }
+  renderNWCharts(ta, tl);
+}
+
+function renderNWCharts(ta, tl) {
+  const cats = {};
+  ASSET_DEF.forEach(a => { if (a.balance > 0) cats[a.cat] = (cats[a.cat] || 0) + a.balance; });
+  const catColors = { Retirement:"#3b82f6", Market:"#16a34a", Fixed:"#d97706", "Real Estate":"#7c3aed", Other:"#94a3b8" };
+
+  destroyChart("chart-nw-assets");
+  if (Object.keys(cats).length > 0) {
+    const ctx = document.getElementById("chart-nw-assets").getContext("2d");
+    chartInstances["chart-nw-assets"] = new Chart(ctx, {
+      type: "doughnut",
+      data: {
+        labels: Object.keys(cats),
+        datasets: [{ data: Object.values(cats), backgroundColor: Object.keys(cats).map(k => catColors[k] || "#94a3b8"), borderWidth: 2 }]
+      },
+      options: { responsive:true, maintainAspectRatio:false,
+        plugins: { legend:{ position:"bottom", labels:{ font:{ size:11 } } },
+          tooltip:{ callbacks:{ label: ctx => ctx.label + ": " + fmtINR(ctx.raw) } } } }
+    });
+  }
+
+  destroyChart("chart-nw-liab");
+  const liabData = LIAB_DEF.filter(a => finVal(a.id) > 0);
+  if (liabData.length > 0) {
+    const ctx2 = document.getElementById("chart-nw-liab").getContext("2d");
+    chartInstances["chart-nw-liab"] = new Chart(ctx2, {
+      type: "bar",
+      data: {
+        labels: liabData.map(a => a.label),
+        datasets: [{ label:"Outstanding", data: liabData.map(a => finVal(a.id)), backgroundColor:"#f87171", borderRadius:4 }]
+      },
+      options: { responsive:true, maintainAspectRatio:false, indexAxis:"y",
+        plugins:{ legend:{ display:false }, tooltip:{ callbacks:{ label: ctx => fmtINR(ctx.raw) } } },
+        scales:{ x:{ ticks:{ callback: v => fmtINR(v) } }, y:{ grid:{ display:false } } } }
+    });
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════
+// DASHBOARD CHARTS
+// ════════════════════════════════════════════════════════════════════
+const COLORS = ["#3b82f6","#16a34a","#d97706","#7c3aed","#dc2626","#0891b2","#be185d","#059669","#ea580c","#6366f1"];
+
+function destroyChart(id) {
+  if (chartInstances[id]) { chartInstances[id].destroy(); delete chartInstances[id]; }
+}
+
+function renderDashboardCharts() {
+  const active = activeGoals();
+  const labels = active.map(g => g.name.length > 15 ? g.name.slice(0,14)+"…" : g.name);
+
+  // Chart 1 — Gross vs Net SIP grouped bar
+  destroyChart("chart-sip");
+  const ctx1 = document.getElementById("chart-sip").getContext("2d");
+  chartInstances["chart-sip"] = new Chart(ctx1, {
+    type: "bar",
+    data: {
+      labels,
+      datasets: [
+        { label:"Gross SIP", data: active.map(g => calcGoal(g).grossSip), backgroundColor:"#93c5fd", borderRadius:3 },
+        { label:"Net SIP (after assets)", data: active.map(g => calcGoal(g).netSip), backgroundColor:"#2563eb", borderRadius:3 },
+      ]
+    },
+    options: { responsive:true, maintainAspectRatio:false,
+      plugins:{ tooltip:{ callbacks:{ label: ctx => ctx.dataset.label + ": ₹" + ctx.raw.toLocaleString("en-IN") } } },
+      scales:{ y:{ ticks:{ callback: v => fmtINR(v) }, grid:{ color:"#f1f5f9" } }, x:{ grid:{ display:false } } }
+    }
+  });
+
+  // Chart 2 — Asset allocation donut
+  const cats = {};
+  ASSET_DEF.forEach(a => { const v = finVal(a.id); if (v > 0) cats[a.cat] = (cats[a.cat] || 0) + v; });
+  destroyChart("chart-assets");
+  const ctx2 = document.getElementById("chart-assets").getContext("2d");
+  const hasAssets = Object.keys(cats).length > 0;
+  chartInstances["chart-assets"] = new Chart(ctx2, {
+    type: "doughnut",
+    data: hasAssets
+      ? { labels: Object.keys(cats), datasets: [{ data: Object.values(cats), backgroundColor:["#3b82f6","#16a34a","#d97706","#7c3aed","#94a3b8"], borderWidth:2 }] }
+      : { labels: ["No assets entered"], datasets: [{ data: [1], backgroundColor: ["#e2e8f0"] }] },
+    options: { responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{ position:"bottom", labels:{ font:{ size:11 } } },
+        tooltip:{ callbacks:{ label: ctx => hasAssets ? ctx.label + ": " + fmtINR(ctx.raw) : "Add assets in Income & Assets" } } } }
+  });
+
+  // Chart 3 — Timeline distribution
+  const tlGroups = { Immediate:0, Short:0, Medium:0, Long:0 };
+  active.forEach(g => { tlGroups[g.timeline] += calcGoal(g).future; });
+  destroyChart("chart-timeline");
+  const ctx3 = document.getElementById("chart-timeline").getContext("2d");
+  chartInstances["chart-timeline"] = new Chart(ctx3, {
+    type: "doughnut",
+    data: {
+      labels: Object.keys(tlGroups),
+      datasets: [{ data: Object.values(tlGroups), backgroundColor:["#fca5a5","#86efac","#fde68a","#c4b5fd"], borderWidth:2 }]
+    },
+    options: { responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{ position:"bottom", labels:{ font:{ size:11 } } },
+        tooltip:{ callbacks:{ label: ctx => ctx.label + ": " + fmtINR(ctx.raw) } } } }
+  });
+
+  // Chart 4 — Need vs Desire
+  const nF = active.filter(g=>g.tag==="Need").reduce((s,g)=>s+calcGoal(g).future,0);
+  const dF = active.filter(g=>g.tag==="Desire").reduce((s,g)=>s+calcGoal(g).future,0);
+  destroyChart("chart-nd");
+  const ctx4 = document.getElementById("chart-nd").getContext("2d");
+  chartInstances["chart-nd"] = new Chart(ctx4, {
+    type: "pie",
+    data: { labels:["Need","Desire"], datasets:[{ data:[nF,dF], backgroundColor:["#3b82f6","#f59e0b"], borderWidth:2 }] },
+    options: { responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{ position:"bottom", labels:{ font:{ size:11 } } },
+        tooltip:{ callbacks:{ label: ctx => ctx.label + ": " + fmtINR(ctx.raw) } } } }
+  });
+}
+
+// ════════════════════════════════════════════════════════════════════
+// DETAIL CHARTS
+// ════════════════════════════════════════════════════════════════════
+function renderDetailCharts() {
+  const active = activeGoals();
+  const labels = active.map(g => g.name.length > 18 ? g.name.slice(0,17)+"…" : g.name);
+
+  destroyChart("chart2-future");
+  const ctx1 = document.getElementById("chart2-future").getContext("2d");
+  chartInstances["chart2-future"] = new Chart(ctx1, {
+    type:"bar", data:{ labels, datasets:[{ label:"Future Cost", data:active.map(g=>calcGoal(g).future), backgroundColor:"#3b82f6", borderRadius:4 }] },
+    options:{ indexAxis:"y", responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{ display:false }, tooltip:{ callbacks:{ label: ctx => fmtINR(ctx.raw) } } },
+      scales:{ x:{ ticks:{ callback: v => fmtINR(v) } }, y:{ grid:{ display:false } } } }
+  });
+
+  destroyChart("chart2-sip");
+  const ctx2 = document.getElementById("chart2-sip").getContext("2d");
+  chartInstances["chart2-sip"] = new Chart(ctx2, {
+    type:"bar",
+    data:{ labels, datasets:[
+      { label:"Gross SIP", data:active.map(g=>calcGoal(g).grossSip), backgroundColor:"#93c5fd", borderRadius:3 },
+      { label:"Net SIP",   data:active.map(g=>calcGoal(g).netSip),   backgroundColor:"#2563eb", borderRadius:3 }
+    ]},
+    options:{ indexAxis:"y", responsive:true, maintainAspectRatio:false,
+      plugins:{ tooltip:{ callbacks:{ label: ctx => ctx.dataset.label+": "+fmtINR(ctx.raw)+"/mo" } } },
+      scales:{ x:{ ticks:{ callback: v => fmtINR(v) } }, y:{ grid:{ display:false } } } }
+  });
+
+  destroyChart("chart2-compare");
+  const ctx3 = document.getElementById("chart2-compare").getContext("2d");
+  chartInstances["chart2-compare"] = new Chart(ctx3, {
+    type:"bar",
+    data:{ labels, datasets:[
+      { label:"Cost Today",   data:active.map(g=>g.costToday),          backgroundColor:"#94a3b8", borderRadius:3 },
+      { label:"Future Cost",  data:active.map(g=>calcGoal(g).future),   backgroundColor:"#3b82f6", borderRadius:3 }
+    ]},
+    options:{ responsive:true, maintainAspectRatio:false,
+      plugins:{ tooltip:{ callbacks:{ label: ctx => ctx.dataset.label+": "+fmtINR(ctx.raw) } } },
+      scales:{ y:{ ticks:{ callback: v => fmtINR(v) }, grid:{ color:"#f1f5f9" } }, x:{ grid:{ display:false } } } }
+  });
+
+  const tls = ["Immediate","Short","Medium","Long"];
+  destroyChart("chart2-breakdown");
+  const ctx4 = document.getElementById("chart2-breakdown").getContext("2d");
+  chartInstances["chart2-breakdown"] = new Chart(ctx4, {
+    type:"bar",
+    data:{ labels:tls, datasets:[
+      { label:"Need",   data:tls.map(tl=>active.filter(g=>g.tag==="Need"   && g.timeline===tl).length), backgroundColor:"#3b82f6", borderRadius:3 },
+      { label:"Desire", data:tls.map(tl=>active.filter(g=>g.tag==="Desire" && g.timeline===tl).length), backgroundColor:"#f59e0b", borderRadius:3 }
+    ]},
+    options:{ responsive:true, maintainAspectRatio:false,
+      scales:{ x:{ stacked:true, grid:{ display:false } }, y:{ stacked:true, ticks:{ precision:0 }, grid:{ color:"#f1f5f9" } } } }
+  });
+
+  // Asset growth projection chart
+  destroyChart("chart2-growth");
+  const ctx5 = document.getElementById("chart2-growth").getContext("2d");
+  const years = Array.from({length:16}, (_,i) => i);
+  const ret = assumptions.returns / 100;
+  const ta  = totalAssets();
+  const baseYear = assumptions.year;
+  chartInstances["chart2-growth"] = new Chart(ctx5, {
+    type:"line",
+    data:{ labels: years.map(y => y === 0 ? String(baseYear) : String(baseYear + y)),
+      datasets:[{ label:"Existing Assets", data:years.map(y => Math.round(ta * Math.pow(1+ret,y))), borderColor:"#16a34a", backgroundColor:"rgba(22,163,74,.1)", fill:true, tension:.3, pointRadius:3 }]
+    },
+    options:{ responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{ display:false }, tooltip:{ callbacks:{ label: ctx => "Assets: "+fmtINR(ctx.raw) } } },
+      scales:{ y:{ ticks:{ callback: v => fmtINR(v) }, grid:{ color:"#f1f5f9" } }, x:{ grid:{ display:false } } } }
+  });
+
+  // Cash flow donut
+  destroyChart("chart2-cashflow");
+  const ctx6 = document.getElementById("chart2-cashflow").getContext("2d");
+  const inc = totalIncome(), exp = totalExpenses();
+  const tNetSip = activeGoals().reduce((s,g) => s + calcGoal(g).netSip, 0);
+  const free = Math.max(0, inc - exp - tNetSip);
+  if (inc > 0) {
+    chartInstances["chart2-cashflow"] = new Chart(ctx6, {
+      type:"doughnut",
+      data:{ labels:["Expenses","Net SIP","Free Cash"], datasets:[{ data:[exp, tNetSip, free], backgroundColor:["#f87171","#3b82f6","#86efac"], borderWidth:2 }] },
+      options:{ responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{ position:"bottom", labels:{ font:{ size:11 } } },
+          tooltip:{ callbacks:{ label: ctx => ctx.label+": "+fmtINR(ctx.raw)+"/mo" } } } }
+    });
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════
+// CHANGE LOG
+// ════════════════════════════════════════════════════════════════════
+function logChange(type, text) {
+  const time = new Date().toLocaleTimeString("en-IN", { hour:"2-digit", minute:"2-digit", second:"2-digit" });
+  changeLog.unshift({ type, text, time });
+  if (changeLog.length > 150) changeLog.pop();
+  renderLog();
+  set("lastUpdated", time);
+}
+function renderLog() {
+  const list = document.getElementById("logList");
+  if (!changeLog.length) { list.innerHTML = '<li class="log-item"><div class="log-dot"></div><div class="log-text" style="color:var(--muted);">No changes yet.</div></li>'; return; }
+  list.innerHTML = changeLog.map(e =>
+    `<li class="log-item"><div class="log-dot ${e.type}"></div><div class="log-text">${e.text}</div><div class="log-time">${e.time}</div></li>`
+  ).join("");
+}
+document.getElementById("clearLog").addEventListener("click", () => { changeLog = []; renderLog(); });
+
+// ════════════════════════════════════════════════════════════════════
+// TOAST
+// ════════════════════════════════════════════════════════════════════
+let toastTimer;
+function showToast(msg) {
+  const t = document.getElementById("toast");
+  t.textContent = msg; t.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove("show"), 2400);
+}
+
+// ════════════════════════════════════════════════════════════════════
+// MASTER RECALC
+// ════════════════════════════════════════════════════════════════════
+// Live recalc: updates everything except the goals table (used while typing in a cell)
+function recalcLive() {
+  renderKPIs();
+  renderCalc();
+  renderDashboardCharts();
+  if (document.getElementById("page-charts").classList.contains("active"))   renderDetailCharts();
+  if (document.getElementById("page-networth").classList.contains("active")) renderNetWorthPage();
+  if (document.getElementById("page-tracker").classList.contains("active"))  renderTrackerPage();
+}
+
+// Full recalc: rebuilds goals table too (used on change/blur, add, delete)
+function recalcAll() {
+  renderKPIs();
+  renderGoals();
+  renderCalc();
+  renderDashboardCharts();
+  if (document.getElementById("page-charts").classList.contains("active"))   renderDetailCharts();
+  if (document.getElementById("page-networth").classList.contains("active")) renderNetWorthPage();
+  if (document.getElementById("page-tracker").classList.contains("active"))  renderTrackerPage();
+}
+
+// ── INIT ──
+bindFinanceInputs();
+renderAssetTable();
+recalcAll();
+logChange("add", "Loaded 10 goals from Financial_Goals_Planner.xlsx");
+
+// ════════════════════════════════════════════════════════════════════
+// GOOGLE SHEETS BACKEND — per-user private sheets + household sharing
+// ════════════════════════════════════════════════════════════════════
+// ─── CONFIGURATION ── Fill these in (see SETUP.md) ──────────────────
+const GSHEET_CONFIG = {
+  clientId: 'YOUR_GOOGLE_CLIENT_ID',   // from Google Cloud Console
+  apiKey:   'YOUR_GOOGLE_API_KEY',      // from Google Cloud Console
+  fileName: 'Financial Goals Planner — My Data',
+
+  // ── Household sharing ────────────────────────────────────────────
+  // List emails that should share a plan with the "owner" email.
+  // The owner's Sheet is used for everyone in the same household.
+  // Leave as {} if everyone has their own independent plan.
+  //
+  // Example:
+  //   'wife@gmail.com':   'husband@gmail.com',
+  //   'son@gmail.com':    'husband@gmail.com',
+  //
+  household: {
+    // 'wife@gmail.com': 'your@gmail.com',
+  },
+};
+// ────────────────────────────────────────────────────────────────────
+
+// drive.file = access ONLY to files this app created — no access to any other Drive files
+const SCOPES = 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file';
+
+// Returns the email whose Sheet should be used for the signed-in user.
+// If they're in a household, returns the owner's email; otherwise their own.
+function resolveSheetOwner(email) {
+  return GSHEET_CONFIG.household[email] || email;
+}
+
+let currentUser    = null;   // { email, name, picture }
+let userSheetId    = null;   // the spreadsheetId for this specific user's Sheet
+let sheetOwner     = null;   // email of whoever owns the Sheet being used
+let gapiReady      = false;
+let gsiReady       = false;
+let autoSaveTimer  = null;
+
+// ── Wait for both GAPI and GSI to be ready ────────────────────────
+function onGapiLoad() {
+  gapi.load('client', async () => {
+    await gapi.client.init({
+      apiKey: GSHEET_CONFIG.apiKey,
+      discoveryDocs: [
+        'https://sheets.googleapis.com/$discovery/rest?version=v4',
+        'https://www.googleapis.com/discovery/v1/apis/drive/v3/rest',
+      ],
+    });
+    gapiReady = true;
+    tryRenderSignIn();
+  });
+}
+function onGsiLoad() { gsiReady = true; tryRenderSignIn(); }
+
+function tryRenderSignIn() {
+  if (!gapiReady || !gsiReady) return;
+  google.accounts.id.initialize({
+    client_id: GSHEET_CONFIG.clientId,
+    callback:  handleCredentialResponse,
+    auto_select: true,
+  });
+  google.accounts.id.renderButton(document.getElementById('g_id_signin'), {
+    theme: 'outline', size: 'large', text: 'signin_with', shape: 'rectangular', width: 280,
+  });
+  google.accounts.id.prompt();
+}
+
+window.addEventListener('load', () => {
+  if (typeof gapi !== 'undefined') onGapiLoad(); else window.gapiLoaded = onGapiLoad;
+  if (typeof google !== 'undefined' && google.accounts) onGsiLoad(); else window.gsiLoaded = onGsiLoad;
+});
+window.gapiLoaded = onGapiLoad;
+window.gsiLoaded  = onGsiLoad;
+
+// ── Handle Google credential (ID token) ──────────────────────────
+async function handleCredentialResponse(response) {
+  const payload = JSON.parse(atob(response.credential.split('.')[1]));
+  currentUser = { email: payload.email, name: payload.name || payload.email, picture: payload.picture };
+  const tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: GSHEET_CONFIG.clientId,
+    scope: SCOPES,
+    prompt: '',
+    callback: async (tokenResponse) => {
+      if (tokenResponse.error) { showAuthError('Auth failed: ' + tokenResponse.error); return; }
+      gapi.client.setToken(tokenResponse);
+      await onSignedIn();
+    },
+  });
+  tokenClient.requestAccessToken();
+}
+
+function showAuthError(msg) {
+  const el = document.getElementById('auth-error');
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+
+function continueOffline() {
+  document.getElementById('auth-overlay').style.display = 'none';
+  updateSidebarIdentity({ name: null, email: null });
+  showToast('Running offline — changes won\'t be saved');
+}
+
+// ── Post-login: resolve household, find/create Sheet, then load ──
+async function onSignedIn() {
+  document.getElementById('auth-overlay').style.display = 'none';
+  document.getElementById('logout-btn').style.display = 'inline-block';
+  updateSidebarIdentity({ email: currentUser.email, name: currentUser.name });
+  set('account-email', currentUser.email);
+
+  // Determine whose Sheet to use (own or household owner's)
+  sheetOwner = resolveSheetOwner(currentUser.email);
+  const isShared = sheetOwner !== currentUser.email;
+
+  try {
+    userSheetId = await findOrCreateUserSheet();
+    const data  = await loadFromSheet();
+    if (data) {
+      loadPlanFromDB(data);
+      if (isShared) showToast(`Loaded shared plan from ${sheetOwner} ✓`);
+    } else {
+      showToast('Welcome! Start filling in your plan 🎉');
+    }
+  } catch (e) {
+    showToast('Could not load plan: ' + e.message);
+    console.error(e);
+  }
+}
+
+// ── Find or create the Sheet for sheetOwner in the current user's Drive ──
+//
+// How household sharing works:
+//   - If you are the owner (sheetOwner === your email): the Sheet lives in YOUR Drive.
+//     drive.file scope means only files this app created are visible — fully private.
+//
+//   - If you are a household member (e.g. wife): the Sheet is searched in YOUR Drive too,
+//     but it was originally created by the owner. For the wife to access it, the owner
+//     must share that specific file with the wife's Google account (Editor access).
+//     The app then finds it via drive.file (shared files with this app are included).
+//     See SETUP.md for the one-time sharing step the owner needs to do.
+//
+async function findOrCreateUserSheet() {
+  const title = sheetOwner === currentUser.email
+    ? GSHEET_CONFIG.fileName                          // own plan
+    : `${GSHEET_CONFIG.fileName} — ${sheetOwner}`;   // owner-tagged name (for clarity in Drive)
+
+  // Search for an existing file with this name (includes files shared with this user)
+  const searchRes = await gapi.client.drive.files.list({
+    q: `name='${title}' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`,
+    fields: 'files(id,name)',
+    spaces: 'drive',
+  });
+  const files = searchRes.result.files || [];
+  if (files.length > 0) return files[0].id;
+
+  // Not found — only create a new Sheet if we ARE the owner
+  // (a household member should never auto-create — they need the owner's file shared with them)
+  if (sheetOwner !== currentUser.email) {
+    throw new Error(
+      `No shared plan found from ${sheetOwner}. Ask them to share their "${GSHEET_CONFIG.fileName}" file with you in Google Drive.`
+    );
+  }
+
+  // Owner: create a fresh Sheet
+  const createRes = await gapi.client.sheets.spreadsheets.create({
+    resource: {
+      properties: { title },
+      sheets: [{ properties: { title: 'Plan' } }],
+    },
+  });
+  const sheetId = createRes.result.spreadsheetId;
+  await gapi.client.sheets.spreadsheets.values.update({
+    spreadsheetId: sheetId,
+    range: 'Plan!A1',
+    valueInputOption: 'RAW',
+    resource: { values: [['Financial Goals Planner — saved data (do not edit manually)']] },
+  });
+  return sheetId;
+}
+
+// ── Read this user's plan from their own Sheet ────────────────────
+async function loadFromSheet() {
+  const res = await gapi.client.sheets.spreadsheets.values.get({
+    spreadsheetId: userSheetId,
+    range: 'Plan!A2',
+  });
+  const raw = res.result.values?.[0]?.[0];
+  if (!raw) return null;
+  return JSON.parse(raw);
+}
+
+// ── Write this user's plan to their own Sheet ─────────────────────
+async function saveToSheet() {
+  if (!currentUser || !userSheetId) return;
+  const payload = JSON.stringify({ profile: collectProfile(), plan: collectPlan() });
+  await gapi.client.sheets.spreadsheets.values.update({
+    spreadsheetId: userSheetId,
+    range: 'Plan!A2',
+    valueInputOption: 'RAW',
+    resource: { values: [[payload]] },
+  });
+  const time = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+  set('lastUpdated', time);
+  const ind = document.getElementById('save-indicator');
+  if (ind) { ind.textContent = '✓ saved'; setTimeout(() => { ind.textContent = ''; }, 2500); }
+}
+
+// ── Load plan data into UI ────────────────────────────────────────
+function loadPlanFromDB({ profile, plan }) {
+  if (profile && Object.keys(profile).length) applyProfile(profile);
+  if (plan && Object.keys(plan).length) {
+    if (plan.goals)       { goals = plan.goals; nextId = Math.max(...goals.map(g => g.id), 10) + 1; }
+    if (plan.assumptions) Object.assign(assumptions, plan.assumptions);
+    if (plan.assetDef)    plan.assetDef.forEach((a, i) => { if (ASSET_DEF[i]) Object.assign(ASSET_DEF[i], a); });
+    if (plan.inputs) {
+      Object.entries(plan.inputs).forEach(([id, val]) => {
+        const el = document.getElementById(id);
+        if (el) el.value = val;
+      });
+    }
+    if (plan.assumptions) {
+      const infl = document.getElementById('s-inflation');
+      const ret  = document.getElementById('s-return');
+      if (infl) { infl.value = plan.assumptions.inflation; document.getElementById('sv-inflation').textContent = plan.assumptions.inflation.toFixed(1) + '%'; }
+      if (ret)  { ret.value  = plan.assumptions.returns;   document.getElementById('sv-return').textContent    = plan.assumptions.returns.toFixed(1) + '%'; }
+    }
+  }
+  renderAssetTable();
+  recalcAll();
+  showToast('Plan loaded ✓');
+}
+
+// ── Collect all plan data for saving ─────────────────────────────
+function collectProfile() {
+  return {
+    name:       document.getElementById('prof-name')?.value || '',
+    age:        +(document.getElementById('prof-age')?.value) || null,
+    retireAge:  +(document.getElementById('prof-retire-age')?.value) || null,
+    city:       document.getElementById('prof-city')?.value || '',
+    spouseName: document.getElementById('prof-spouse')?.value || '',
+    spouseAge:  +(document.getElementById('prof-spouse-age')?.value) || null,
+  };
+}
+
+function collectPlan() {
+  const inputs = {};
+  [...INCOME_IDS, ...EXPENSE_IDS, ...LIAB_DEF.map(a => a.id)].forEach(id => {
+    const el = document.getElementById(id);
+    if (el && el.value) inputs[id] = el.value;
+  });
+  return {
+    goals,
+    assumptions,
+    assetDef: ASSET_DEF.map(({ id, label, cat, rate, balance, monthly }) => ({ id, label, cat, rate, balance, monthly })),
+    inputs,
+  };
+}
+
+// ── Auto-save debounce ────────────────────────────────────────────
+function scheduleSave() {
+  if (!currentUser) return;
+  clearTimeout(autoSaveTimer);
+  autoSaveTimer = setTimeout(saveToSheet, 2000);
+}
+
+// ── Profile save button ───────────────────────────────────────────
+async function saveProfile() {
+  const profile = collectProfile();
+  applyProfile(profile);
+  const statusEl = document.getElementById('profile-save-status');
+  if (!currentUser) {
+    statusEl.textContent = '⚠ Not signed in — changes not persisted';
+    statusEl.style.color = 'var(--amber)';
+    return;
+  }
+  try {
+    await saveToSheet();
+    statusEl.textContent = '✓ Saved';
+    statusEl.style.color = 'var(--green)';
+    setTimeout(() => { statusEl.textContent = ''; }, 3000);
+    showToast('Profile saved');
+  } catch (e) {
+    statusEl.textContent = '✗ ' + e.message;
+    statusEl.style.color = 'var(--red)';
+  }
+}
+
+// ── Identity helpers ──────────────────────────────────────────────
+function applyProfile(p) {
+  if (!p) return;
+  if (p.name)       document.getElementById('prof-name').value       = p.name;
+  if (p.age)        document.getElementById('prof-age').value        = p.age;
+  if (p.retireAge)  document.getElementById('prof-retire-age').value = p.retireAge;
+  if (p.city)       document.getElementById('prof-city').value       = p.city;
+  if (p.spouseName) document.getElementById('prof-spouse').value     = p.spouseName;
+  if (p.spouseAge)  document.getElementById('prof-spouse-age').value = p.spouseAge;
+  updateSidebarIdentity({ name: p.name });
+  refreshProfileDisplay(p);
+}
+
+function refreshProfileDisplay(p) {
+  const name = p.name || '—';
+  set('profile-display-name', name);
+  if (p.age && p.retireAge) {
+    const yearsLeft = p.retireAge - p.age;
+    set('profile-display-age', `Age ${p.age} · Retiring at ${p.retireAge} (${yearsLeft} yrs away)${p.city ? ' · ' + p.city : ''}`);
+  } else if (p.age) {
+    set('profile-display-age', `Age ${p.age}${p.city ? ' · ' + p.city : ''}`);
+  }
+}
+
+function updateSidebarIdentity({ name, email }) {
+  const initials = name ? name.trim().split(' ').map(w => w[0]).join('').toUpperCase().slice(0,2)
+                        : (email ? email[0].toUpperCase() : '?');
+  set('avatar', initials);
+  const bigAv = document.getElementById('profile-avatar-big');
+  if (bigAv) bigAv.textContent = initials;
+  if (name)  set('sidebar-name', name);
+  if (email) { set('sidebar-email', email); set('account-email', email); set('profile-display-email', email); }
+}
+
+// ── Logout ────────────────────────────────────────────────────────
+function logout() {
+  if (currentUser) google.accounts.id.revoke(currentUser.email, () => {});
+  currentUser = null;
+  gapi.client.setToken(null);
+  document.getElementById('logout-btn').style.display = 'none';
+  document.getElementById('auth-overlay').style.display = 'flex';
+  updateSidebarIdentity({ name: null, email: null });
+  set('sidebar-name', 'Financial Planner');
+  set('sidebar-email', 'Not signed in');
+}
+
+// ── Hook auto-save into recalcLive/recalcAll ──────────────────────
+const _origRecalcLive = recalcLive;
+recalcLive = function() { _origRecalcLive(); scheduleSave(); };
+
+const _origRecalcAll = recalcAll;
+recalcAll = function() { _origRecalcAll(); scheduleSave(); };
+</script>

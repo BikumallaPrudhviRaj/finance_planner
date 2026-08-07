@@ -1,0 +1,4 @@
+server/node_modules/
+.bob/
+*.xlsx
+.DS_Store
