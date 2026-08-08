@@ -1594,10 +1594,23 @@ let currentUser    = null;   // { email, name, picture }
 let userSheetId    = null;   // the spreadsheetId for this specific user's Sheet
 let sheetOwner     = null;   // email of whoever owns the Sheet being used
 let gapiReady      = false;
-let gsiReady       = false;
 let autoSaveTimer  = null;
 
-// ── Wait for both GAPI and GSI to be ready ────────────────────────
+// ── GSI (Sign-In button) — runs as soon as accounts.google.com/gsi/client loads ──
+// Does NOT wait for GAPI — the button renders immediately.
+function onGsiLoad() {
+  google.accounts.id.initialize({
+    client_id: GSHEET_CONFIG.clientId,
+    callback:  handleCredentialResponse,
+    auto_select: true,
+  });
+  google.accounts.id.renderButton(document.getElementById('g_id_signin'), {
+    theme: 'outline', size: 'large', text: 'signin_with', shape: 'rectangular', width: 280,
+  });
+  google.accounts.id.prompt(); // silent auto-sign-in for returning users
+}
+
+// ── GAPI (Sheets + Drive) — loads in background, used only after sign-in ─────
 function onGapiLoad() {
   gapi.load('client', async () => {
     await gapi.client.init({
@@ -1608,30 +1621,17 @@ function onGapiLoad() {
       ],
     });
     gapiReady = true;
-    tryRenderSignIn();
   });
 }
-function onGsiLoad() { gsiReady = true; tryRenderSignIn(); }
 
-function tryRenderSignIn() {
-  if (!gapiReady || !gsiReady) return;
-  google.accounts.id.initialize({
-    client_id: GSHEET_CONFIG.clientId,
-    callback:  handleCredentialResponse,
-    auto_select: true,
-  });
-  google.accounts.id.renderButton(document.getElementById('g_id_signin'), {
-    theme: 'outline', size: 'large', text: 'signin_with', shape: 'rectangular', width: 280,
-  });
-  google.accounts.id.prompt();
-}
-
-window.addEventListener('load', () => {
-  if (typeof gapi !== 'undefined') onGapiLoad(); else window.gapiLoaded = onGapiLoad;
-  if (typeof google !== 'undefined' && google.accounts) onGsiLoad(); else window.gsiLoaded = onGsiLoad;
-});
-window.gapiLoaded = onGapiLoad;
+// Wire up — handle both cases: script already loaded, or not yet
 window.gsiLoaded  = onGsiLoad;
+window.gapiLoaded = onGapiLoad;
+window.addEventListener('load', () => {
+  // If scripts already fired their onload before this ran, call manually
+  if (typeof google !== 'undefined' && google.accounts) onGsiLoad();
+  if (typeof gapi   !== 'undefined') onGapiLoad();
+});
 
 // ── Handle Google credential (ID token) ──────────────────────────
 async function handleCredentialResponse(response) {
@@ -1662,18 +1662,32 @@ function continueOffline() {
   showToast('Running offline — changes won\'t be saved');
 }
 
+// ── Wait for GAPI to be ready (poll, max 10s) ────────────────────
+function waitForGapi() {
+  return new Promise((resolve, reject) => {
+    if (gapiReady) return resolve();
+    let tries = 0;
+    const t = setInterval(() => {
+      if (gapiReady) { clearInterval(t); resolve(); }
+      else if (++tries > 100) { clearInterval(t); reject(new Error('Google API failed to load. Check your internet connection and try refreshing.')); }
+    }, 100);
+  });
+}
+
 // ── Post-login: resolve household, find/create Sheet, then load ──
 async function onSignedIn() {
   document.getElementById('auth-overlay').style.display = 'none';
   document.getElementById('logout-btn').style.display = 'inline-block';
   updateSidebarIdentity({ email: currentUser.email, name: currentUser.name });
   set('account-email', currentUser.email);
+  showToast('Signed in — loading your plan…');
 
   // Determine whose Sheet to use (own or household owner's)
   sheetOwner = resolveSheetOwner(currentUser.email);
   const isShared = sheetOwner !== currentUser.email;
 
   try {
+    await waitForGapi(); // ensure Sheets/Drive API is ready before we use it
     userSheetId = await findOrCreateUserSheet();
     const data  = await loadFromSheet();
     if (data) {
