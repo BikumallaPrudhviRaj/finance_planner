@@ -241,10 +241,19 @@
     <div class="nav-item" data-page="charts"><span class="icon">📈</span>Charts &amp; Analytics</div>
     <div class="nav-item" data-page="log"><span class="icon">🕓</span>Change Log</div>
   </div>
-  <div class="sidebar-footer" style="display:flex;align-items:center;justify-content:space-between;">
-    <span>Last saved: <span id="lastUpdated">—</span></span>
-    <button id="logout-btn" onclick="logout()" style="display:none;background:none;border:1px solid #334155;border-radius:4px;color:#94a3b8;padding:3px 8px;font-size:11px;cursor:pointer;">Sign out</button>
-    <span id="save-indicator" style="font-size:10px;color:#64748b;"></span>
+  <div class="sidebar-footer" style="padding:12px 16px;border-top:1px solid #334155;">
+    <!-- Save bar -->
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+      <button id="save-btn" onclick="manualSave()" style="display:none;flex:1;background:#16a34a;color:#fff;border:none;border-radius:5px;padding:7px 10px;font-size:12px;font-weight:600;cursor:pointer;transition:background .15s;">
+        💾 Save Changes
+      </button>
+      <span id="save-indicator" style="font-size:11px;color:#94a3b8;flex:1;text-align:center;"></span>
+    </div>
+    <!-- Last saved + sign out -->
+    <div style="display:flex;align-items:center;justify-content:space-between;">
+      <span style="font-size:10px;color:#64748b;">Saved: <span id="lastUpdated">—</span></span>
+      <button id="logout-btn" onclick="logout()" style="display:none;background:none;border:1px solid #334155;border-radius:4px;color:#94a3b8;padding:3px 8px;font-size:11px;cursor:pointer;">Sign out</button>
+    </div>
   </div>
 </nav>
 
@@ -1745,20 +1754,62 @@ async function loadFromSheet() {
   return JSON.parse(raw);
 }
 
+// ── Save state helpers ────────────────────────────────────────────
+function markUnsaved() {
+  if (!currentUser) return;
+  const btn = document.getElementById('save-btn');
+  const ind = document.getElementById('save-indicator');
+  if (btn) btn.style.display = 'block';
+  if (ind) ind.style.display = 'none';
+}
+
+function markSaved(time) {
+  const btn = document.getElementById('save-btn');
+  const ind = document.getElementById('save-indicator');
+  if (btn) btn.style.display = 'none';
+  if (ind) { ind.style.display = 'inline'; ind.textContent = '✓ All changes saved'; }
+  set('lastUpdated', time);
+  setTimeout(() => { if (ind) ind.textContent = ''; }, 3000);
+}
+
+function markSaveError(msg) {
+  const btn = document.getElementById('save-btn');
+  const ind = document.getElementById('save-indicator');
+  if (btn) { btn.style.display = 'block'; btn.textContent = '⚠ Retry Save'; btn.style.background = '#dc2626'; }
+  if (ind) { ind.style.display = 'inline'; ind.textContent = '✗ ' + msg; ind.style.color = '#fca5a5'; }
+}
+
 // ── Write this user's plan to their own Sheet ─────────────────────
 async function saveToSheet() {
   if (!currentUser || !userSheetId) return;
-  const payload = JSON.stringify({ profile: collectProfile(), plan: collectPlan() });
-  await gapi.client.sheets.spreadsheets.values.update({
-    spreadsheetId: userSheetId,
-    range: 'Plan!A2',
-    valueInputOption: 'RAW',
-    resource: { values: [[payload]] },
-  });
-  const time = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
-  set('lastUpdated', time);
-  const ind = document.getElementById('save-indicator');
-  if (ind) { ind.textContent = '✓ saved'; setTimeout(() => { ind.textContent = ''; }, 2500); }
+  const saveBtn = document.getElementById('save-btn');
+  if (saveBtn && saveBtn.style.display !== 'none') {
+    saveBtn.textContent = '💾 Saving…';
+    saveBtn.disabled = true;
+  }
+  try {
+    const payload = JSON.stringify({ profile: collectProfile(), plan: collectPlan() });
+    await gapi.client.sheets.spreadsheets.values.update({
+      spreadsheetId: userSheetId,
+      range: 'Plan!A2',
+      valueInputOption: 'RAW',
+      resource: { values: [[payload]] },
+    });
+    const time = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+    markSaved(time);
+    if (saveBtn) { saveBtn.textContent = '💾 Save Changes'; saveBtn.style.background = '#16a34a'; }
+  } catch (e) {
+    console.error('Save failed:', e);
+    markSaveError('Save failed');
+  } finally {
+    if (saveBtn) saveBtn.disabled = false;
+  }
+}
+
+// ── Manual save triggered by the Save button ─────────────────────
+async function manualSave() {
+  clearTimeout(autoSaveTimer);
+  await saveToSheet();
 }
 
 // ── Load plan data into UI ────────────────────────────────────────
@@ -1813,10 +1864,12 @@ function collectPlan() {
 }
 
 // ── Auto-save debounce ────────────────────────────────────────────
+// Shows "Save Changes" button immediately, then auto-saves after 3s of inactivity
 function scheduleSave() {
   if (!currentUser) return;
+  markUnsaved();                               // show Save button right away
   clearTimeout(autoSaveTimer);
-  autoSaveTimer = setTimeout(saveToSheet, 2000);
+  autoSaveTimer = setTimeout(saveToSheet, 3000); // auto-save after 3s idle
 }
 
 // ── Profile save button ───────────────────────────────────────────
