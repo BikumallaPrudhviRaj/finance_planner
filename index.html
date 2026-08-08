@@ -578,14 +578,14 @@
       </div>
     </div>
     <div class="table-wrap">
-      <table><thead><tr><th>#</th><th>Goal</th><th>Note</th><th>Tag</th><th>Timeline</th><th>Priority</th><th>Cost Today (₹)</th><th>Decision</th><th></th></tr></thead>
+      <table><thead><tr><th>#</th><th>Goal</th><th>Note</th><th>Tag</th><th style="min-width:110px;">Timeline (yrs)</th><th>Priority</th><th>Cost Today (₹)</th><th>Decision</th><th></th></tr></thead>
       <tbody id="goalsBody"></tbody></table>
     </div>
     <div class="add-form" id="addForm" style="display:none;">
       <div class="field field-goal"><label>Goal Name</label><input type="text" id="af-name" placeholder="e.g. Buy a House"></div>
       <div class="field field-goal"><label>Note</label><input type="text" id="af-note" placeholder="Clarify your goal…"></div>
       <div class="field field-sm"><label>Tag</label><select id="af-tag"><option>Need</option><option>Desire</option></select></div>
-      <div class="field field-sm"><label>Timeline</label><select id="af-tl"><option>Immediate</option><option>Short</option><option>Medium</option><option>Long</option></select></div>
+      <div class="field field-xs"><label>Years away</label><input type="number" id="af-tl" min="0.5" max="40" step="0.5" placeholder="e.g. 5" style="width:80px;"></div>
       <div class="field field-xs"><label>Priority</label><input type="number" id="af-pri" min="1" max="20" value="1"></div>
       <div class="field field-sm"><label>Cost Today (₹)</label><input type="number" id="af-cost" min="0" placeholder="e.g. 5000000"></div>
       <div class="field field-sm"><label>Decision</label><select id="af-dec"><option>Keep</option><option>Revise</option><option>Drop</option></select></div>
@@ -714,20 +714,41 @@
 // ════════════════════════════════════════════════════════════════════
 // DATA
 // ════════════════════════════════════════════════════════════════════
-const TIMELINE_YEARS = { Immediate: 0.5, Short: 3, Medium: 7, Long: 15 };
-const EQUITY = { Immediate: 10, Short: 40, Medium: 70, Long: 85 };
+// Timeline is now stored as a number (years). These helpers derive display label + equity %.
+// Legacy string values ("Immediate","Short","Medium","Long") are converted on load.
+const LEGACY_TIMELINE = { Immediate: 0.5, Short: 3, Medium: 7, Long: 15 };
+
+function timelineYears(g) {
+  // g.timeline is a number; fall back for any legacy string values
+  const v = parseFloat(g.timeline);
+  return isNaN(v) ? (LEGACY_TIMELINE[g.timeline] || 3) : v;
+}
+
+function timelineLabel(yrs) {
+  if (yrs <= 1)  return { label: 'Immediate', cls: 'imm' };
+  if (yrs <= 5)  return { label: `${yrs}y · Short`,   cls: 'sht' };
+  if (yrs <= 10) return { label: `${yrs}y · Medium`,  cls: 'med' };
+  return              { label: `${yrs}y · Long`,    cls: 'lng' };
+}
+
+function timelineEquity(yrs) {
+  if (yrs <= 1)  return 10;
+  if (yrs <= 3)  return 40;
+  if (yrs <= 7)  return 70;
+  return 85;
+}
 
 let goals = [
-  { id:1,  name:"Buy House",               note:"3BHK in Bangalore",         tag:"Need",   timeline:"Long",      priority:1, costToday:8000000,  decision:"Keep" },
-  { id:2,  name:"Retirement",              note:"Retire at age 60",           tag:"Need",   timeline:"Long",      priority:2, costToday:30000000, decision:"Keep" },
-  { id:3,  name:"Child 1 Higher Education",note:"Engineering / MBA abroad",   tag:"Need",   timeline:"Medium",    priority:1, costToday:2500000,  decision:"Keep" },
-  { id:4,  name:"Child 1 Marriage",        note:"",                           tag:"Need",   timeline:"Long",      priority:3, costToday:2000000,  decision:"Keep" },
-  { id:5,  name:"Foreign Trip",            note:"Europe trip in 2-3 years",   tag:"Desire", timeline:"Short",     priority:1, costToday:500000,   decision:"Keep" },
-  { id:6,  name:"Buy Car",                 note:"Mid-segment sedan",          tag:"Desire", timeline:"Short",     priority:2, costToday:1000000,  decision:"Keep" },
-  { id:7,  name:"Reduce Credit Card Debt", note:"Pay off ₹2L outstanding",    tag:"Need",   timeline:"Immediate", priority:1, costToday:200000,   decision:"Keep" },
-  { id:8,  name:"Emergency Fund",          note:"6 months expenses",          tag:"Need",   timeline:"Immediate", priority:2, costToday:600000,   decision:"Keep" },
-  { id:9,  name:"Modifications in House",  note:"Interior renovation",        tag:"Desire", timeline:"Medium",    priority:2, costToday:1000000,  decision:"Revise"},
-  { id:10, name:"Europe Trip for Parents", note:"Gift trip for parents",       tag:"Desire", timeline:"Short",     priority:3, costToday:500000,   decision:"Keep" },
+  { id:1,  name:"Buy House",               note:"3BHK in Bangalore",         tag:"Need",   timeline:15,  priority:1, costToday:8000000,  decision:"Keep" },
+  { id:2,  name:"Retirement",              note:"Retire at age 60",           tag:"Need",   timeline:25,  priority:2, costToday:30000000, decision:"Keep" },
+  { id:3,  name:"Child 1 Higher Education",note:"Engineering / MBA abroad",   tag:"Need",   timeline:7,   priority:1, costToday:2500000,  decision:"Keep" },
+  { id:4,  name:"Child 1 Marriage",        note:"",                           tag:"Need",   timeline:15,  priority:3, costToday:2000000,  decision:"Keep" },
+  { id:5,  name:"Foreign Trip",            note:"Europe trip in 2-3 years",   tag:"Desire", timeline:3,   priority:1, costToday:500000,   decision:"Keep" },
+  { id:6,  name:"Buy Car",                 note:"Mid-segment sedan",          tag:"Desire", timeline:2,   priority:2, costToday:1000000,  decision:"Keep" },
+  { id:7,  name:"Reduce Credit Card Debt", note:"Pay off ₹2L outstanding",    tag:"Need",   timeline:0.5, priority:1, costToday:200000,   decision:"Keep" },
+  { id:8,  name:"Emergency Fund",          note:"6 months expenses",          tag:"Need",   timeline:0.5, priority:2, costToday:600000,   decision:"Keep" },
+  { id:9,  name:"Modifications in House",  note:"Interior renovation",        tag:"Desire", timeline:5,   priority:2, costToday:1000000,  decision:"Revise"},
+  { id:10, name:"Europe Trip for Parents", note:"Gift trip for parents",       tag:"Desire", timeline:2,   priority:3, costToday:500000,   decision:"Keep" },
 ];
 let nextId = 11;
 let assumptions = { inflation: 6, returns: 10, year: new Date().getFullYear() };
@@ -806,7 +827,7 @@ function bankBalanceAfter(months) {
 function calcGoal(g) {
   const infl   = assumptions.inflation / 100;
   const ret    = assumptions.returns  / 100;
-  const yrs    = TIMELINE_YEARS[g.timeline] || 3;
+  const yrs    = timelineYears(g);
   const n      = Math.round(yrs * 12);
   const r      = ret / 12;
   const future = g.costToday * Math.pow(1 + infl, yrs);
@@ -818,11 +839,10 @@ function calcGoal(g) {
 
   // Asset offset — each asset projected forward using its own rate + monthly contributions
   const months = Math.round(yrs * 12);
-  const assetFV = totalProjected(months); // uses per-asset rate and monthly contrib
-  // Distribute proportionally across active goals by future cost weight
+  const assetFV = totalProjected(months);
   const active = goals.filter(g => g.decision !== "Drop" && g.costToday > 0);
   const totalFuture = active.reduce((s,g2) => {
-    const yrs2 = TIMELINE_YEARS[g2.timeline] || 3;
+    const yrs2 = timelineYears(g2);
     return s + g2.costToday * Math.pow(1 + infl, yrs2);
   }, 0);
   const weight = totalFuture > 0 ? future / totalFuture : 0;
@@ -833,7 +853,7 @@ function calcGoal(g) {
   if (r === 0 || n === 0) { netSip = n > 0 ? netCorpus / n : netCorpus; }
   else { netSip = netCorpus * r / (Math.pow(1 + r, n) - 1); }
 
-  const eq = EQUITY[g.timeline] || 60;
+  const eq = timelineEquity(yrs);
   return {
     future: Math.round(future),
     grossSip: Math.round(grossSip),
@@ -958,11 +978,12 @@ function renderGoals() {
   const tbody = document.getElementById("goalsBody");
   let list = [...goals];
   if (sortByTimeline) {
-    const order = { Immediate:0, Short:1, Medium:2, Long:3 };
-    list.sort((a,b) => order[a.timeline] - order[b.timeline] || a.priority - b.priority);
+    list.sort((a,b) => timelineYears(a) - timelineYears(b) || a.priority - b.priority);
   }
   tbody.innerHTML = list.map(g => {
     const dropped = g.decision === "Drop";
+    const yrs = timelineYears(g);
+    const { label, cls } = timelineLabel(yrs);
     return `<tr class="${dropped?"dropped":""}" data-id="${g.id}">
       <td style="color:var(--muted);width:32px;">${g.id}</td>
       <td style="min-width:160px;"><input type="text" value="${esc(g.name)}" data-field="name" data-id="${g.id}"></td>
@@ -971,12 +992,14 @@ function renderGoals() {
         <option ${g.tag==="Need"?"selected":""}>Need</option>
         <option ${g.tag==="Desire"?"selected":""}>Desire</option>
       </select></td>
-      <td><select data-field="timeline" data-id="${g.id}">
-        <option ${g.timeline==="Immediate"?"selected":""}>Immediate</option>
-        <option ${g.timeline==="Short"?"selected":""}>Short</option>
-        <option ${g.timeline==="Medium"?"selected":""}>Medium</option>
-        <option ${g.timeline==="Long"?"selected":""}>Long</option>
-      </select></td>
+      <td>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <input type="number" value="${yrs}" min="0.5" max="40" step="0.5"
+            data-field="timeline" data-id="${g.id}"
+            style="width:54px;border:1px solid var(--border);border-radius:5px;padding:4px 6px;font-size:12px;font-family:inherit;text-align:center;">
+          <span class="badge badge-${cls}" id="tl-badge-${g.id}" style="font-size:10px;white-space:nowrap;">${label}</span>
+        </div>
+      </td>
       <td style="width:60px;"><input type="number" value="${g.priority}" min="1" max="20" data-field="priority" data-id="${g.id}" style="width:50px;"></td>
       <td style="min-width:130px;"><input type="number" value="${g.costToday}" min="0" data-field="costToday" data-id="${g.id}"></td>
       <td><select data-field="decision" data-id="${g.id}">
@@ -990,12 +1013,20 @@ function renderGoals() {
 
   tbody.querySelectorAll("input,select").forEach(el => {
     el.addEventListener("change", onGoalFieldChange);
-    // On every keystroke: update data model + recalc everything EXCEPT the goals table
-    // (re-rendering the table mid-type would destroy the focused input)
     if (el.tagName === "INPUT") el.addEventListener("input", () => {
       const g = goals.find(g => g.id === +el.dataset.id);
       if (!g) return;
-      g[el.dataset.field] = el.dataset.field === "costToday" || el.dataset.field === "priority" ? +el.value : el.value;
+      const numFields = ["costToday","priority","timeline"];
+      g[el.dataset.field] = numFields.includes(el.dataset.field) ? +el.value : el.value;
+      // Live-update the timeline badge as user types
+      if (el.dataset.field === "timeline") {
+        const badge = document.getElementById(`tl-badge-${g.id}`);
+        if (badge) {
+          const { label, cls } = timelineLabel(+el.value || 1);
+          badge.textContent = label;
+          badge.className = `badge badge-${cls}`;
+        }
+      }
       recalcLive();
     });
   });
@@ -1009,7 +1040,8 @@ function onGoalFieldChange(e) {
   const g = goals.find(g => g.id === id);
   if (!g) return;
   const oldVal = g[field];
-  const newVal = field === "costToday" || field === "priority" ? +el.value : el.value;
+  const numFields = ["costToday","priority","timeline"];
+  const newVal = numFields.includes(field) ? +el.value : el.value;
   if (oldVal === newVal) return;
   logChange("edit", `"${g.name}": ${field} → "${newVal}"`);
   g[field] = newVal;
@@ -1039,11 +1071,13 @@ document.getElementById("cancelAdd").addEventListener("click", () => {
 document.getElementById("addGoalConfirm").addEventListener("click", () => {
   const name = document.getElementById("af-name").value.trim();
   if (!name) { showToast("Please enter a goal name"); return; }
+  const tlVal = +document.getElementById("af-tl").value;
+  if (!tlVal || tlVal <= 0) { showToast("Please enter a valid number of years"); return; }
   const g = {
     id: nextId++, name,
     note:     document.getElementById("af-note").value.trim(),
     tag:      document.getElementById("af-tag").value,
-    timeline: document.getElementById("af-tl").value,
+    timeline: tlVal,
     priority: +document.getElementById("af-pri").value || 1,
     costToday:+document.getElementById("af-cost").value || 0,
     decision: document.getElementById("af-dec").value,
@@ -1816,7 +1850,14 @@ async function manualSave() {
 function loadPlanFromDB({ profile, plan }) {
   if (profile && Object.keys(profile).length) applyProfile(profile);
   if (plan && Object.keys(plan).length) {
-    if (plan.goals)       { goals = plan.goals; nextId = Math.max(...goals.map(g => g.id), 10) + 1; }
+    if (plan.goals) {
+      // Convert any legacy string timelines to numbers on load
+      goals = plan.goals.map(g => ({
+        ...g,
+        timeline: isNaN(parseFloat(g.timeline)) ? (LEGACY_TIMELINE[g.timeline] || 3) : parseFloat(g.timeline)
+      }));
+      nextId = Math.max(...goals.map(g => g.id), 10) + 1;
+    }
     if (plan.assumptions) Object.assign(assumptions, plan.assumptions);
     if (plan.assetDef)    plan.assetDef.forEach((a, i) => { if (ASSET_DEF[i]) Object.assign(ASSET_DEF[i], a); });
     if (plan.inputs) {
