@@ -1581,8 +1581,8 @@ const GSHEET_CONFIG = {
 };
 // ────────────────────────────────────────────────────────────────────
 
-// drive.file = access ONLY to files this app created — no access to any other Drive files
-const SCOPES = 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file';
+// Only spreadsheets scope — no Drive API needed, no extra permission warnings
+const SCOPES = 'https://www.googleapis.com/auth/spreadsheets';
 
 // Returns the email whose Sheet should be used for the signed-in user.
 // If they're in a household, returns the owner's email; otherwise their own.
@@ -1610,15 +1610,12 @@ function onGsiLoad() {
   google.accounts.id.prompt(); // silent auto-sign-in for returning users
 }
 
-// ── GAPI (Sheets + Drive) — loads in background, used only after sign-in ─────
+// ── GAPI (Sheets only) — loads in background, used only after sign-in ────────
 function onGapiLoad() {
   gapi.load('client', async () => {
     await gapi.client.init({
       apiKey: GSHEET_CONFIG.apiKey,
-      discoveryDocs: [
-        'https://sheets.googleapis.com/$discovery/rest?version=v4',
-        'https://www.googleapis.com/discovery/v1/apis/drive/v3/rest',
-      ],
+      discoveryDocs: ['https://sheets.googleapis.com/$discovery/rest?version=v4'],
     });
     gapiReady = true;
   });
@@ -1702,41 +1699,46 @@ async function onSignedIn() {
   }
 }
 
-// ── Find or create the Sheet for sheetOwner in the current user's Drive ──
+// ── Sheet ID cache helpers ────────────────────────────────────────
+// Sheet IDs are stored in localStorage keyed by owner email so they
+// survive page refreshes without needing Drive search API.
+function cacheKey(email) { return `fp_sheet_${email}`; }
+function getCachedSheetId(email) { return localStorage.getItem(cacheKey(email)); }
+function setCachedSheetId(email, id) { localStorage.setItem(cacheKey(email), id); }
+
+// ── Find (from cache) or create a fresh Sheet ─────────────────────
 //
-// How household sharing works:
-//   - If you are the owner (sheetOwner === your email): the Sheet lives in YOUR Drive.
-//     drive.file scope means only files this app created are visible — fully private.
+// Strategy (no Drive API needed — only Sheets API):
+//   1. Check localStorage for a previously saved Sheet ID for this owner.
+//   2. If found, verify it's still accessible (a quick read ping).
+//   3. If not found or inaccessible → create a brand-new Sheet.
 //
-//   - If you are a household member (e.g. wife): the Sheet is searched in YOUR Drive too,
-//     but it was originally created by the owner. For the wife to access it, the owner
-//     must share that specific file with the wife's Google account (Editor access).
-//     The app then finds it via drive.file (shared files with this app are included).
-//     See SETUP.md for the one-time sharing step the owner needs to do.
+// Household sharing: the owner runs the app first (creates Sheet + caches ID).
+// Then they copy their Sheet ID from Google Drive URL and add it to GSHEET_CONFIG.household
+// as a sharedSheetId — OR the app falls back to creating one per device (still works,
+// just means each device has its own sheet unless IDs are explicitly shared).
 //
 async function findOrCreateUserSheet() {
-  const title = sheetOwner === currentUser.email
-    ? GSHEET_CONFIG.fileName                          // own plan
-    : `${GSHEET_CONFIG.fileName} — ${sheetOwner}`;   // owner-tagged name (for clarity in Drive)
-
-  // Search for an existing file with this name (includes files shared with this user)
-  const searchRes = await gapi.client.drive.files.list({
-    q: `name='${title}' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`,
-    fields: 'files(id,name)',
-    spaces: 'drive',
-  });
-  const files = searchRes.result.files || [];
-  if (files.length > 0) return files[0].id;
-
-  // Not found — only create a new Sheet if we ARE the owner
-  // (a household member should never auto-create — they need the owner's file shared with them)
-  if (sheetOwner !== currentUser.email) {
-    throw new Error(
-      `No shared plan found from ${sheetOwner}. Ask them to share their "${GSHEET_CONFIG.fileName}" file with you in Google Drive.`
-    );
+  // For household members: owner may have put the sheet ID directly in config
+  if (sheetOwner !== currentUser.email && GSHEET_CONFIG.householdSheetId?.[sheetOwner]) {
+    return GSHEET_CONFIG.householdSheetId[sheetOwner];
   }
 
-  // Owner: create a fresh Sheet
+  // Check cache first
+  const cached = getCachedSheetId(sheetOwner);
+  if (cached) {
+    // Quick ping to verify the cached sheet is still valid
+    try {
+      await gapi.client.sheets.spreadsheets.get({ spreadsheetId: cached });
+      return cached; // still accessible ✓
+    } catch {
+      // Sheet was deleted or inaccessible — fall through to create a new one
+      localStorage.removeItem(cacheKey(sheetOwner));
+    }
+  }
+
+  // Create a fresh Sheet in the signed-in user's Google Drive
+  const title = GSHEET_CONFIG.fileName;
   const createRes = await gapi.client.sheets.spreadsheets.create({
     resource: {
       properties: { title },
@@ -1744,12 +1746,15 @@ async function findOrCreateUserSheet() {
     },
   });
   const sheetId = createRes.result.spreadsheetId;
+  // Write header row
   await gapi.client.sheets.spreadsheets.values.update({
     spreadsheetId: sheetId,
     range: 'Plan!A1',
     valueInputOption: 'RAW',
-    resource: { values: [['Financial Goals Planner — saved data (do not edit manually)']] },
+    resource: { values: [['Financial Goals Planner — do not edit manually']] },
   });
+  // Cache it so we reuse it on every future sign-in from this browser
+  setCachedSheetId(sheetOwner, sheetId);
   return sheetId;
 }
 
