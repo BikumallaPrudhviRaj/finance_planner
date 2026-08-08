@@ -1562,16 +1562,9 @@ logChange("add", "Loaded 10 goals from Financial_Goals_Planner.xlsx");
 // ════════════════════════════════════════════════════════════════════
 // ─── CONFIGURATION ── Fill these in (see SETUP.md) ──────────────────
 const GSHEET_CONFIG = {
-  clientId:   '294256602919-61tp1cmmqq2aurtjkvh6oq6oe1asclru.apps.googleusercontent.com',
-  apiKey:     'AIzaSyDGp3scEMh8m0QUkh7MvJp0yQWPK5TwQjU',
-  fileName:   'Financial Goals Planner — My Data',
-
-  // ── Registry Sheet ───────────────────────────────────────────────
-  // One Sheet YOU own that maps every user's email → their personal Sheet ID.
-  // This is how the app finds your data on any device — phone, laptop, work PC.
-  // See SETUP.md Step 2 for how to create this (takes 2 minutes).
-  // Set to null to disable cross-device sync (data only on current device).
-  registrySheetId: null,   // e.g. '1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms'
+  clientId: '294256602919-61tp1cmmqq2aurtjkvh6oq6oe1asclru.apps.googleusercontent.com',
+  apiKey:   'AIzaSyDGp3scEMh8m0QUkh7MvJp0yQWPK5TwQjU',
+  fileName: 'financial_planner',   // name of the Sheet in each user's Google Drive
 
   // ── Household sharing ────────────────────────────────────────────
   // Members listed here share the owner's plan instead of their own.
@@ -1581,8 +1574,9 @@ const GSHEET_CONFIG = {
 };
 // ────────────────────────────────────────────────────────────────────
 
-// Only spreadsheets scope — no Drive API needed, no extra permission warnings
-const SCOPES = 'https://www.googleapis.com/auth/spreadsheets';
+// drive.file  — only sees files THIS app created in the user's Drive
+// spreadsheets — read/write those sheets
+const SCOPES = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/spreadsheets';
 
 // Returns the email whose Sheet should be used for the signed-in user.
 // If they're in a household, returns the owner's email; otherwise their own.
@@ -1610,12 +1604,15 @@ function onGsiLoad() {
   google.accounts.id.prompt(); // silent auto-sign-in for returning users
 }
 
-// ── GAPI (Sheets only) — loads in background, used only after sign-in ────────
+// ── GAPI (Sheets + Drive) — loads in background, used only after sign-in ─────
 function onGapiLoad() {
   gapi.load('client', async () => {
     await gapi.client.init({
       apiKey: GSHEET_CONFIG.apiKey,
-      discoveryDocs: ['https://sheets.googleapis.com/$discovery/rest?version=v4'],
+      discoveryDocs: [
+        'https://sheets.googleapis.com/$discovery/rest?version=v4',
+        'https://www.googleapis.com/discovery/v1/apis/drive/v3/rest',
+      ],
     });
     gapiReady = true;
   });
@@ -1699,88 +1696,28 @@ async function onSignedIn() {
   }
 }
 
-// ── localStorage cache (fast path — avoids registry lookup when on same device) ──
-function lsKey(email)              { return `fp_sheet_${email}`; }
-function getCached(email)          { return localStorage.getItem(lsKey(email)); }
-function setCached(email, sheetId) { localStorage.setItem(lsKey(email), sheetId); }
-
-// ── Registry: look up sheetId for a given email ───────────────────
-async function lookupRegistry(email) {
-  if (!GSHEET_CONFIG.registrySheetId) return null;
-  try {
-    const res = await gapi.client.sheets.spreadsheets.values.get({
-      spreadsheetId: GSHEET_CONFIG.registrySheetId,
-      range: 'Registry!A:B',
-    });
-    const rows = res.result.values || [];
-    const row  = rows.find(r => r[0] === email);
-    return row ? row[1] : null;
-  } catch { return null; }
-}
-
-// ── Registry: save/update sheetId for a given email ──────────────
-async function registerSheet(email, sheetId) {
-  if (!GSHEET_CONFIG.registrySheetId) return;
-  try {
-    // Find existing row
-    const res = await gapi.client.sheets.spreadsheets.values.get({
-      spreadsheetId: GSHEET_CONFIG.registrySheetId,
-      range: 'Registry!A:A',
-    });
-    const rows   = res.result.values || [];
-    const rowIdx = rows.findIndex(r => r[0] === email);
-    if (rowIdx === -1) {
-      // Append new row
-      await gapi.client.sheets.spreadsheets.values.append({
-        spreadsheetId: GSHEET_CONFIG.registrySheetId,
-        range: 'Registry!A:B',
-        valueInputOption: 'RAW',
-        resource: { values: [[email, sheetId]] },
-      });
-    } else {
-      // Update existing row
-      await gapi.client.sheets.spreadsheets.values.update({
-        spreadsheetId: GSHEET_CONFIG.registrySheetId,
-        range: `Registry!A${rowIdx + 1}:B${rowIdx + 1}`,
-        valueInputOption: 'RAW',
-        resource: { values: [[email, sheetId]] },
-      });
-    }
-  } catch (e) { console.warn('Registry write failed (non-fatal):', e.message); }
-}
-
-// ── Find or create the user's personal data Sheet ────────────────
+// ── Find or create the user's Sheet in their own Google Drive ────
 //
-// Resolution order (each device independently resolves once then caches):
-//   1. localStorage  — instant, works offline, same device
-//   2. Registry Sheet — cross-device lookup (requires registrySheetId in config)
-//   3. Create new    — first time ever, or registry not configured
+//  - Searches the signed-in user's Drive for a file named GSHEET_CONFIG.fileName
+//  - Found  → return its ID  (works on ANY device, any browser)
+//  - Not found → new user → create it fresh
+//  - drive.file scope means the search only sees files THIS app created,
+//    so there's zero risk of reading anything else in the user's Drive.
 //
 async function findOrCreateUserSheet() {
-  // 1. localStorage (fast path)
-  const cached = getCached(sheetOwner);
-  if (cached) {
-    try {
-      await gapi.client.sheets.spreadsheets.get({ spreadsheetId: cached });
-      return cached; // still valid ✓
-    } catch {
-      localStorage.removeItem(lsKey(sheetOwner)); // stale — clear it
-    }
+  // Search Drive for existing sheet by name
+  const searchRes = await gapi.client.drive.files.list({
+    q: `name='${GSHEET_CONFIG.fileName}' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`,
+    fields: 'files(id)',
+    spaces: 'drive',
+    pageSize: 1,
+  });
+  const files = searchRes.result.files || [];
+  if (files.length > 0) {
+    return files[0].id; // existing sheet found — same on every device ✓
   }
 
-  // 2. Registry lookup (cross-device)
-  const fromRegistry = await lookupRegistry(sheetOwner);
-  if (fromRegistry) {
-    try {
-      await gapi.client.sheets.spreadsheets.get({ spreadsheetId: fromRegistry });
-      setCached(sheetOwner, fromRegistry); // cache locally for next time
-      return fromRegistry;
-    } catch {
-      // Sheet in registry is gone — fall through to create a new one
-    }
-  }
-
-  // 3. Create a new Sheet
+  // Not found → first time ever for this user → create it
   const createRes = await gapi.client.sheets.spreadsheets.create({
     resource: {
       properties: { title: GSHEET_CONFIG.fileName },
@@ -1792,10 +1729,8 @@ async function findOrCreateUserSheet() {
     spreadsheetId: sheetId,
     range: 'Plan!A1',
     valueInputOption: 'RAW',
-    resource: { values: [['Financial Goals Planner — do not edit manually']] },
+    resource: { values: [['financial_planner — do not edit manually']] },
   });
-  setCached(sheetOwner, sheetId);          // cache locally
-  await registerSheet(sheetOwner, sheetId); // register for cross-device access
   return sheetId;
 }
 
