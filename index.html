@@ -1453,14 +1453,14 @@ function renderNWCharts(ta, tl) {
   }
 
   destroyChart("chart-nw-liab");
-  const liabData = LIAB_DEF.filter(a => finVal(a.id) > 0);
+  const liabData = liabilityRows.filter(r => r.amount > 0);
   if (liabData.length > 0) {
     const ctx2 = document.getElementById("chart-nw-liab").getContext("2d");
     chartInstances["chart-nw-liab"] = new Chart(ctx2, {
       type: "bar",
       data: {
-        labels: liabData.map(a => a.label),
-        datasets: [{ label:"Outstanding", data: liabData.map(a => finVal(a.id)), backgroundColor:"#f87171", borderRadius:4 }]
+        labels: liabData.map(r => r.label),
+        datasets: [{ label:"Outstanding", data: liabData.map(r => r.amount), backgroundColor:"#f87171", borderRadius:4 }]
       },
       options: { responsive:true, maintainAspectRatio:false, indexAxis:"y",
         plugins:{ legend:{ display:false }, tooltip:{ callbacks:{ label: ctx => fmtINR(ctx.raw) } } },
@@ -1502,7 +1502,7 @@ function renderDashboardCharts() {
 
   // Chart 2 — Asset allocation donut
   const cats = {};
-  ASSET_DEF.forEach(a => { const v = finVal(a.id); if (v > 0) cats[a.cat] = (cats[a.cat] || 0) + v; });
+  ASSET_DEF.forEach(a => { if (a.balance > 0) cats[a.cat] = (cats[a.cat] || 0) + a.balance; });
   destroyChart("chart-assets");
   const ctx2 = document.getElementById("chart-assets").getContext("2d");
   const hasAssets = Object.keys(cats).length > 0;
