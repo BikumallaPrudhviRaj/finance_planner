@@ -1730,7 +1730,7 @@ let autoSaveTimer  = null;
 
 // ── GSI (Sign-In button) — runs as soon as accounts.google.com/gsi/client loads ──
 // Does NOT wait for GAPI — the button renders immediately.
-let _tokenClient = null; // reusable OAuth token client
+var _tokenClient = null; // reusable OAuth token client (var avoids TDZ issue)
 
 function onGsiLoad() {
   google.accounts.id.initialize({
